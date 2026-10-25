@@ -29,6 +29,9 @@ jobs:
       - name: Build Web Bundle
         run: npm run build
 
+      - name: Build Electron Main & Preload
+        run: npm run build:electron
+
       - name: Build Windows Installer (.exe)
         run: npx electron-builder --win nsis
         env:
