@@ -7,10 +7,13 @@ import {
   Sparkles, 
   ShieldCheck, 
   Check, 
-  Zap
+  Zap,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { useModelStore } from '../stores/useModelStore';
 import { useAccountStore } from '../stores/useAccountStore';
+import { useThemeStore } from '../stores/useThemeStore';
 import { LeosModel } from '../types';
 
 interface TopBarProps {
@@ -29,6 +32,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   const { models, activeModelId, setActiveModel } = useModelStore();
   const { accounts, activeAccountId } = useAccountStore();
+  const { resolvedTheme, setTheme } = useThemeStore();
 
   const activeModel = models.find((m) => m.id === activeModelId) || models[0];
   const activeAccount = accounts.find((a) => a.id === activeAccountId) || accounts[0];
@@ -164,6 +168,19 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right: Actions (Voice Talk Mode, Split View, Privacy Badge) */}
       <div className="flex items-center gap-1.5">
+        {/* Theme Toggle (Light / Dark) */}
+        <button
+          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+          className="p-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-leos-muted hover:text-leos-text transition-colors shadow-sm"
+          title={`Switch to ${resolvedTheme === 'dark' ? 'Light' : 'Dark'} Mode`}
+        >
+          {resolvedTheme === 'dark' ? (
+            <Sun className="w-4 h-4 text-amber-400" />
+          ) : (
+            <Moon className="w-4 h-4 text-purple-400" />
+          )}
+        </button>
+
         {/* Two-Way Voice Talk Mode Button */}
         <button
           onClick={onOpenVoiceModal}

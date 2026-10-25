@@ -6,9 +6,13 @@ import {
   Cpu, 
   ShieldCheck, 
   Check,
-  HardDrive
+  HardDrive,
+  Sun,
+  Moon,
+  Monitor
 } from 'lucide-react';
 import { useChatStore } from '../stores/useChatStore';
+import { useThemeStore, ThemeMode } from '../stores/useThemeStore';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -20,6 +24,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
   const [lmStudioUrl, setLmStudioUrl] = useState('http://localhost:1234');
   const [exported, setExported] = useState(false);
+
+  const { theme, setTheme } = useThemeStore();
 
   if (!isOpen) return null;
 
@@ -36,6 +42,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     setTimeout(() => setExported(false), 2500);
   };
 
+  const themeOptions: { id: ThemeMode; label: string; icon: React.ReactNode }[] = [
+    { id: 'dark', label: 'Dark', icon: <Moon className="w-3.5 h-3.5" /> },
+    { id: 'light', label: 'Light', icon: <Sun className="w-3.5 h-3.5" /> },
+    { id: 'system', label: 'System', icon: <Monitor className="w-3.5 h-3.5" /> },
+  ];
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 select-none">
       <div className="w-full max-w-lg bg-leos-surface border border-leos-border rounded-2xl shadow-2xl overflow-hidden flex flex-col">
@@ -44,8 +56,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           <div className="flex items-center gap-2.5">
             <SettingsIcon className="w-5 h-5 text-leos-accent" />
             <div>
-              <h3 className="text-sm font-semibold text-leos-text">Settings & Privacy</h3>
-              <p className="text-[11px] text-leos-muted">Local endpoints, backup portability, and zero-knowledge storage</p>
+              <h3 className="text-sm font-semibold text-leos-text">Settings & Preferences</h3>
+              <p className="text-[11px] text-leos-muted">Themes, local endpoints, and zero-knowledge storage</p>
             </div>
           </div>
           <button
@@ -58,6 +70,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
         {/* Settings Body */}
         <div className="p-4 overflow-y-auto max-h-80 space-y-4">
+          {/* Theme Selector */}
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-leos-text flex items-center gap-1.5">
+              <Sun className="w-3.5 h-3.5 text-leos-accent" />
+              <span>Appearance & Theme</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {themeOptions.map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setTheme(opt.id)}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-medium transition-all ${
+                    theme === opt.id
+                      ? 'bg-leos-accent text-black border-leos-accent font-semibold shadow-sm'
+                      : 'bg-leos-card border-leos-border text-leos-muted hover:text-leos-text hover:bg-leos-surfaceHover'
+                  }`}
+                >
+                  {opt.icon}
+                  <span>{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           {/* Local LLM Ports */}
           <div className="space-y-2">
             <div className="text-xs font-semibold text-leos-text flex items-center gap-1.5">
