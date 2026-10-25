@@ -24,7 +24,7 @@ export const ChatArea: React.FC = () => {
     regenerateResponseWithModel 
   } = useChatStore();
 
-  const { models } = useModelStore();
+  const { models, activeModelId, setActiveModel } = useModelStore();
   const { accounts, activeAccountId } = useAccountStore();
   const activeAccount = accounts.find((a) => a.id === activeAccountId) || accounts[0];
 
@@ -60,32 +60,90 @@ export const ChatArea: React.FC = () => {
   // Empty state when thread has no messages
   if (!currentConv || currentConv.messages.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center select-none">
-        <div className="w-12 h-12 rounded-2xl bg-leos-surface border border-leos-border flex items-center justify-center mb-4 shadow-sm">
+      <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 text-center select-none overflow-y-auto">
+        <div className="w-12 h-12 rounded-2xl bg-leos-surface border border-leos-border flex items-center justify-center mb-3 shadow-md">
           <Logo className="w-8 h-8" />
         </div>
-        <h2 className="text-lg font-semibold text-leos-text mb-1 tracking-tight">Leos Workspace</h2>
-        <p className="text-xs text-leos-muted max-w-md mb-8 leading-relaxed">
-          Switch models mid-conversation, run local models privately, and connect your Google accounts in one unified cockpit.
+        <h2 className="text-xl font-bold text-leos-text mb-1 tracking-tight">Leos AI Workspace</h2>
+        <p className="text-xs text-leos-muted max-w-md mb-6 leading-relaxed">
+          Welcome <span className="text-leos-text font-semibold">{activeAccount?.name}</span>. Switch models mid-chat, run offline local LLMs, and use Google Gemini tools.
         </p>
 
-        {/* Suggested Quick Starts */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-lg w-full">
-          <div className="p-3 bg-leos-surface hover:bg-leos-surfaceHover border border-leos-border hover:border-leos-borderLight rounded-xl text-left cursor-pointer transition-all shadow-sm">
-            <span className="text-xs font-medium text-leos-text block mb-1">
-              Cross-Model Compare
+        {/* AI Models Showcase Carousel / Pills */}
+        <div className="w-full max-w-2xl mb-6">
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-leos-muted flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-leos-accent" />
+              <span>Available AI Engines (Click to Select)</span>
             </span>
-            <span className="text-[11px] text-leos-muted block">
-              Ask Gemini, then regenerate with Claude or a local model.
+            <span className="text-[10px] text-leos-muted font-mono">
+              Active: <span className="text-leos-accent font-semibold">{models.find(m => m.id === activeModelId)?.name}</span>
             </span>
           </div>
 
-          <div className="p-3 bg-leos-surface hover:bg-leos-surfaceHover border border-leos-border hover:border-leos-borderLight rounded-xl text-left cursor-pointer transition-all shadow-sm">
-            <span className="text-xs font-medium text-leos-text block mb-1">
-              Multi-Account Isolation
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-left">
+            {models.map((m) => {
+              const isActive = m.id === activeModelId;
+              return (
+                <div
+                  key={m.id}
+                  onClick={() => setActiveModel(m.id)}
+                  className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                    isActive
+                      ? 'bg-leos-accent/15 border-leos-accent shadow-sm'
+                      : 'bg-leos-surface border-leos-border hover:border-leos-borderLight hover:bg-leos-surfaceHover'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-leos-text truncate">{m.name}</span>
+                    {isActive ? (
+                      <Check className="w-3.5 h-3.5 text-leos-accent shrink-0" />
+                    ) : (
+                      m.tag && (
+                        <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-leos-card border border-leos-border text-leos-muted">
+                          {m.tag}
+                        </span>
+                      )
+                    )}
+                  </div>
+                  <span className="text-[10px] text-leos-muted block truncate">{m.description}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Suggested Quick Starts */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-2xl w-full text-left">
+          <div 
+            onClick={() => {
+              const gemini = models.find(m => m.id.includes('gemini-2.0'));
+              if (gemini) setActiveModel(gemini.id);
+            }}
+            className="p-3 bg-leos-surface hover:bg-leos-surfaceHover border border-leos-border hover:border-leos-borderLight rounded-xl cursor-pointer transition-all shadow-sm"
+          >
+            <span className="text-xs font-semibold text-leos-text block mb-0.5 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+              <span>Google Gemini 2.0 Flash</span>
             </span>
             <span className="text-[11px] text-leos-muted block">
-              Manage personal and work sessions with dedicated partitions.
+              Real-time multimodal speed, coding, and vision analysis.
+            </span>
+          </div>
+
+          <div 
+            onClick={() => {
+              const claude = models.find(m => m.id.includes('claude'));
+              if (claude) setActiveModel(claude.id);
+            }}
+            className="p-3 bg-leos-surface hover:bg-leos-surfaceHover border border-leos-border hover:border-leos-borderLight rounded-xl cursor-pointer transition-all shadow-sm"
+          >
+            <span className="text-xs font-semibold text-leos-text block mb-0.5 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              <span>Claude 3.5 Sonnet</span>
+            </span>
+            <span className="text-[11px] text-leos-muted block">
+              Architectural logic, full-stack programming, and structured reasoning.
             </span>
           </div>
         </div>
