@@ -67,31 +67,45 @@ Instead of paying for expensive API tokens or juggling multiple browser windows,
 
 ---
 
-## Getting Started
+## Installation & Downloads
 
-### Prerequisites
-- Node.js (v18.0.0 or higher)
-- npm or pnpm
+### 💻 Desktop (Windows 10 / 11)
+**One-Click Installer:**
+1. Go to the [Releases](https://github.com/meraj1103/Leos/releases) page.
+2. Download **`Leos-Setup-1.0.0.exe`**.
+3. Double-click to run. Leos will install automatically and create a desktop shortcut with zero setup.
 
-### Installation
+---
+
+### 📱 Android (Phones & Tablets)
+You have two ways to install Leos on Android:
+
+#### Option 1: 1-Tap Install (PWA — Recommended, Instant)
+1. Open your deployed Leos URL in Chrome on your Android device.
+2. Tap the **"Add Leos to Home screen"** or **"Install App"** banner at the bottom.
+3. The app will install into your Android app drawer and launch full-screen like a native app.
+
+#### Option 2: Standalone APK
+1. Download **`Leos.apk`** from [Releases](https://github.com/meraj1103/Leos/releases).
+2. Tap the APK on your device to install.
+
+---
+
+### 🛠️ Developer Setup (Build from Source)
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/Leos.git
+git clone https://github.com/meraj1103/Leos.git
 cd Leos
 
 # Install dependencies
 npm install
 
-# Run the development environment
+# Run the local web dev server
 npm run dev
-```
 
-### Packaging for Desktop
-
-```bash
-# Build desktop executable for Windows, macOS, or Linux
-npm run build
+# Build the Windows one-click installer (.exe)
+npm run build:win
 ```
 
 ---

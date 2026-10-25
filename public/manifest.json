@@ -1,0 +1,19 @@
+{
+  "short_name": "Leos",
+  "name": "Leos - The Universal AI Cockpit",
+  "description": "Multi-Account Google Sync, Free Web Models, Local Offline LLMs, and MCP Tools",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0e0f12",
+  "theme_color": "#0e0f12",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "utilities", "ai"]
+}
