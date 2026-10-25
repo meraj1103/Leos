@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Mic, 
-  MicOff, 
   Volume2, 
-  PhoneOff,
   Radio
 } from 'lucide-react';
 import { speechService } from '../services/speechService';
 import { useModelStore } from '../stores/useModelStore';
 import { useAccountStore } from '../stores/useAccountStore';
+import { useChatStore } from '../stores/useChatStore';
 import { dispatchRealAI } from '../services/aiDispatcher';
 
 interface VoiceModalProps {
@@ -23,9 +22,14 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ isOpen, onClose }) => {
   const [userTranscript, setUserTranscript] = useState('');
   const [aiResponse, setAiResponse] = useState('');
   const [statusMessage, setStatusMessage] = useState('Listening to your voice...');
+  const [voiceHistory, setVoiceHistory] = useState<{ role: 'user' | 'assistant' | 'system'; content: string }[]>([]);
+
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
 
   const { models, activeModelId } = useModelStore();
   const { accounts, activeAccountId } = useAccountStore();
+  const { addVoiceExchange } = useChatStore();
 
   const activeModel = models.find((m) => m.id === activeModelId) || models[0];
   const activeAccount = accounts.find((a) => a.id === activeAccountId) || accounts[0];
@@ -40,21 +44,28 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ isOpen, onClose }) => {
   }, [isOpen]);
 
   const startVoiceSession = () => {
+    if (!isOpenRef.current) return;
     setIsListening(true);
-    setStatusMessage(`Connected to ${activeModel.name}`);
+    setStatusMessage(`Listening for ${activeModel.name}...`);
     
     speechService.startListening({
-      onStart: () => setIsListening(true),
+      onStart: () => {
+        if (!isOpenRef.current) return;
+        setIsListening(true);
+      },
       onResult: (transcript, isFinal) => {
+        if (!isOpenRef.current) return;
         setUserTranscript(transcript);
         if (isFinal) {
           handleUserFinishedSpeaking(transcript);
         }
       },
       onError: (err) => {
-        setStatusMessage(`Mic error: ${err}`);
+        if (!isOpenRef.current) return;
+        setStatusMessage(`Mic: ${err}`);
       },
       onEnd: () => {
+        if (!isOpenRef.current) return;
         setIsListening(false);
       },
     });
@@ -68,6 +79,8 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ isOpen, onClose }) => {
   };
 
   const handleUserFinishedSpeaking = async (finalText: string) => {
+    if (!isOpenRef.current || !finalText.trim()) return;
+
     speechService.stopListening();
     setIsListening(false);
     setStatusMessage(`${activeModel.name} is thinking...`);
@@ -80,24 +93,48 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ isOpen, onClose }) => {
         modelName: activeModel.name,
         provider: activeModel.provider,
         prompt: finalText,
-        conversationHistory: [],
+        conversationHistory: voiceHistory,
         onChunk: (chunk) => {
+          if (!isOpenRef.current) return;
           accumulated += chunk;
           setAiResponse(accumulated);
         },
       });
 
+      if (!isOpenRef.current) return;
+
+      // Update local memory so AI remembers previous turns in this conversation
+      const updatedHistory = [
+        ...voiceHistory,
+        { role: 'user' as const, content: finalText },
+        { role: 'assistant' as const, content: accumulated },
+      ];
+      setVoiceHistory(updatedHistory);
+
+      // Save transcript into active thread in useChatStore
+      addVoiceExchange(
+        finalText,
+        accumulated,
+        activeModel.name,
+        activeModel.provider,
+        activeAccount?.email
+      );
+
       setIsSpeaking(true);
       setStatusMessage(`${activeModel.name} is speaking...`);
 
       speechService.speak(accumulated, () => {
+        if (!isOpenRef.current) return;
         setIsSpeaking(false);
         // Automatically resume listening for continuous two-way talk
         startVoiceSession();
       });
     } catch (err: any) {
-      setStatusMessage(`Error generating response: ${err.message || err}`);
-      setTimeout(() => startVoiceSession(), 2000);
+      if (!isOpenRef.current) return;
+      setStatusMessage(`Error: ${err.message || err}`);
+      setTimeout(() => {
+        if (isOpenRef.current) startVoiceSession();
+      }, 2000);
     }
   };
 
@@ -107,22 +144,22 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ isOpen, onClose }) => {
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 select-none">
       <div className="w-full max-w-md bg-leos-surface border border-leos-border rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center relative overflow-hidden">
         {/* Top Model / Status Header */}
-        <div className="w-full flex items-center justify-between mb-8">
+        <div className="w-full flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
             <span className="text-xs font-semibold text-leos-text">{activeModel.name}</span>
-            <span className="text-[10px] text-leos-muted font-mono">({activeAccount.email})</span>
+            <span className="text-[10px] text-leos-muted font-mono">({activeAccount?.email || 'Connected'})</span>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-leos-surfaceHover text-leos-muted hover:text-leos-text transition-colors"
+            className="p-1.5 rounded-full hover:bg-leos-surfaceHover text-leos-muted hover:text-leos-text transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Minimalist Pulsing Voice Orb (No Emojis) */}
-        <div className="relative my-8 flex items-center justify-center">
+        {/* Minimalist Pulsing Voice Orb */}
+        <div className="relative my-6 flex items-center justify-center">
           {/* Animated concentric pulse rings */}
           <div
             className={`absolute w-36 h-36 rounded-full border border-leos-accent/30 transition-all duration-700 ${
@@ -149,52 +186,55 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ isOpen, onClose }) => {
 
         {/* Dynamic Status Text */}
         <div className="mb-4">
-          <span className="text-xs font-medium text-leos-text block mb-1">{statusMessage}</span>
-          <span className="text-[11px] text-leos-muted font-mono block">
-            {isSpeaking ? 'Speaking back to you' : isListening ? 'Speak naturally...' : 'Connecting audio...'}
-          </span>
+          <div className="text-xs font-medium text-leos-text font-mono mb-1">
+            {statusMessage}
+          </div>
+          <p className="text-[11px] text-leos-muted">
+            {isListening ? 'Speak naturally into your microphone.' : isSpeaking ? 'Listening will resume when speech finishes.' : 'Processing...'}
+          </p>
         </div>
 
-        {/* Live Subtitle Transcript */}
-        <div className="w-full bg-leos-dark/60 border border-leos-border/60 rounded-xl p-3 min-h-[70px] max-h-32 overflow-y-auto mb-8 text-left">
-          {userTranscript ? (
-            <div className="text-xs text-leos-text leading-relaxed">
-              <span className="text-leos-muted font-mono text-[10px] mr-1.5">You:</span>
-              {userTranscript}
-            </div>
-          ) : aiResponse ? (
-            <div className="text-xs text-leos-text leading-relaxed">
-              <span className="text-leos-accent font-mono text-[10px] mr-1.5">{activeModel.name}:</span>
-              {aiResponse}
-            </div>
-          ) : (
-            <span className="text-xs text-leos-muted/60 italic">Voice transcript will appear here...</span>
-          )}
-        </div>
+        {/* Live Transcript Bubble */}
+        {(userTranscript || aiResponse) && (
+          <div className="w-full bg-leos-card border border-leos-border rounded-xl p-3 text-left space-y-2 max-h-40 overflow-y-auto mb-4 text-xs">
+            {userTranscript && (
+              <div>
+                <span className="text-[10px] font-semibold text-leos-accent uppercase font-mono block">You said:</span>
+                <p className="text-leos-text">{userTranscript}</p>
+              </div>
+            )}
+            {aiResponse && (
+              <div className="pt-1 border-t border-leos-border/50">
+                <span className="text-[10px] font-semibold text-blue-400 uppercase font-mono block">{activeModel.name}:</span>
+                <p className="text-leos-text leading-relaxed">{aiResponse}</p>
+              </div>
+            )}
+          </div>
+        )}
 
-        {/* Bottom Call Controls */}
-        <div className="flex items-center gap-4">
+        {/* Action Controls */}
+        <div className="flex items-center gap-3">
           <button
             onClick={() => {
               if (isListening) {
                 speechService.stopListening();
                 setIsListening(false);
+                setStatusMessage('Paused. Tap Mic to resume.');
               } else {
                 startVoiceSession();
               }
             }}
-            className="p-3 rounded-full bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-leos-text transition-all"
-            title={isListening ? 'Mute Mic' : 'Unmute Mic'}
+            className="px-4 py-2 rounded-xl bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-xs font-medium text-leos-text flex items-center gap-2 cursor-pointer shadow-sm"
           >
-            {isListening ? <Mic className="w-5 h-5 text-amber-400" /> : <MicOff className="w-5 h-5 text-leos-muted" />}
+            <Mic className="w-3.5 h-3.5 text-amber-400" />
+            <span>{isListening ? 'Pause Mic' : 'Resume Mic'}</span>
           </button>
 
           <button
             onClick={onClose}
-            className="p-3.5 rounded-full bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-400 transition-all shadow-md"
-            title="End Voice Conversation"
+            className="px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-xs font-medium text-red-400 cursor-pointer shadow-sm"
           >
-            <PhoneOff className="w-5 h-5" />
+            End Call
           </button>
         </div>
       </div>

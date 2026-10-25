@@ -1,11 +1,59 @@
+import { LeosAttachment } from '../types';
+
 export interface DispatchParams {
   modelId: string;
   modelName: string;
   provider: string;
   prompt: string;
   conversationHistory: { role: 'user' | 'assistant' | 'system'; content: string }[];
+  attachments?: LeosAttachment[];
+  mcpContext?: string;
   signal?: AbortSignal;
   onChunk: (chunk: string) => void;
+}
+
+/**
+ * Builds an enriched prompt text that includes document contents, referenced URLs,
+ * active MCP context, and attachment notices for models.
+ */
+function buildEnrichedPrompt(
+  prompt: string,
+  attachments?: LeosAttachment[],
+  mcpContext?: string
+): string {
+  let enriched = prompt ? prompt.trim() : '';
+
+  if (attachments && attachments.length > 0) {
+    const textAttachments = attachments
+      .filter((a) => a.type === 'document' && a.content)
+      .map((a) => `\n\n--- Document Attached: ${a.name} ---\n${a.content}\n--- End of Document ---`)
+      .join('\n');
+
+    const urlAttachments = attachments
+      .filter((a) => a.type === 'url')
+      .map((a) => `\n[Referenced URL: ${a.url || a.name}]`)
+      .join('\n');
+
+    const imageNotices = attachments
+      .filter((a) => a.type === 'image')
+      .map((a) => `\n[Image Attached: ${a.name}]`)
+      .join('\n');
+
+    if (textAttachments) enriched += textAttachments;
+    if (urlAttachments) enriched += urlAttachments;
+    if (imageNotices) enriched += imageNotices;
+  }
+
+  if (mcpContext && mcpContext.trim()) {
+    enriched = `[Active MCP Tools Available: ${mcpContext.trim()}]\n\n${enriched}`;
+  }
+
+  // If user provided no text and only attached something
+  if (!enriched.trim()) {
+    enriched = 'Please review and analyze the attached item(s).';
+  }
+
+  return enriched;
 }
 
 export async function dispatchRealAI({
@@ -14,15 +62,19 @@ export async function dispatchRealAI({
   provider,
   prompt,
   conversationHistory,
+  attachments,
+  mcpContext,
   signal,
   onChunk,
 }: DispatchParams): Promise<void> {
+  const finalPrompt = buildEnrichedPrompt(prompt, attachments, mcpContext);
+
   const ollamaEndpoint = typeof localStorage !== 'undefined' 
-    ? localStorage.getItem('leos-ollama-url') || 'http://localhost:11434'
+    ? (localStorage.getItem('leos-ollama-url') || 'http://localhost:11434').replace(/\/+$/, '')
     : 'http://localhost:11434';
 
   const lmStudioEndpoint = typeof localStorage !== 'undefined'
-    ? localStorage.getItem('leos-lmstudio-url') || 'http://localhost:1234'
+    ? (localStorage.getItem('leos-lmstudio-url') || 'http://localhost:1234').replace(/\/+$/, '')
     : 'http://localhost:1234';
 
   // 1. OLLAMA LOCAL LLM
@@ -36,7 +88,7 @@ export async function dispatchRealAI({
           model: rawModel,
           messages: [
             ...conversationHistory.map((m) => ({ role: m.role, content: m.content })),
-            { role: 'user', content: prompt },
+            { role: 'user', content: finalPrompt },
           ],
           stream: true,
         }),
@@ -89,7 +141,7 @@ export async function dispatchRealAI({
           model: rawModel,
           messages: [
             ...conversationHistory.map((m) => ({ role: m.role, content: m.content })),
-            { role: 'user', content: prompt },
+            { role: 'user', content: finalPrompt },
           ],
           stream: true,
         }),
@@ -130,7 +182,7 @@ export async function dispatchRealAI({
 
   // 3. GOOGLE GEMINI
   if (provider === 'google') {
-    const geminiKey = typeof localStorage !== 'undefined' ? localStorage.getItem('leos-gemini-key') : '';
+    const geminiKey = typeof localStorage !== 'undefined' ? (localStorage.getItem('leos-gemini-key') || '').trim() : '';
     if (!geminiKey) {
       onChunk(
         `🔑 **Gemini API Key Required**\n\n` +
@@ -153,12 +205,34 @@ export async function dispatchRealAI({
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:streamGenerateContent?key=${geminiKey}&alt=sse`;
       
+      // Multimodal parts: support images via inlineData
+      const userParts: any[] = [];
+
+      if (attachments && attachments.length > 0) {
+        for (const att of attachments) {
+          if (att.type === 'image' && att.content && att.content.startsWith('data:')) {
+            const [meta, base64] = att.content.split(';base64,');
+            const mimeType = meta.replace('data:', '') || 'image/jpeg';
+            if (base64) {
+              userParts.push({
+                inlineData: {
+                  mimeType,
+                  data: base64,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      userParts.push({ text: finalPrompt });
+
       const contents = [
         ...conversationHistory.map((m) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: m.content }],
         })),
-        { role: 'user', parts: [{ text: prompt }] },
+        { role: 'user', parts: userParts },
       ];
 
       const response = await fetch(url, {
@@ -201,7 +275,7 @@ export async function dispatchRealAI({
 
   // 4. ANTHROPIC CLAUDE
   if (provider === 'anthropic') {
-    const anthropicKey = typeof localStorage !== 'undefined' ? localStorage.getItem('leos-anthropic-key') : '';
+    const anthropicKey = typeof localStorage !== 'undefined' ? (localStorage.getItem('leos-anthropic-key') || '').trim() : '';
     if (!anthropicKey) {
       onChunk(
         `🔑 **Anthropic Claude API Key Required**\n\n` +
@@ -230,7 +304,7 @@ export async function dispatchRealAI({
             ...conversationHistory
               .filter((m) => m.role === 'user' || m.role === 'assistant')
               .map((m) => ({ role: m.role, content: m.content })),
-            { role: 'user', content: prompt },
+            { role: 'user', content: finalPrompt },
           ],
           stream: true,
         }),
@@ -270,16 +344,17 @@ export async function dispatchRealAI({
     }
   }
 
-  // 4. OPENAI / GROQ / DEEPSEEK (OpenAI-compatible)
+  // 5. OPENAI / GROQ / DEEPSEEK / OPENROUTER (OpenAI-compatible)
   const keyMap: Record<string, { storageKey: string; baseUrl: string; defaultModel: string }> = {
     openai: { storageKey: 'leos-openai-key', baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4o-mini' },
     groq: { storageKey: 'leos-groq-key', baseUrl: 'https://api.groq.com/openai/v1', defaultModel: 'llama-3.3-70b-versatile' },
     deepseek: { storageKey: 'leos-deepseek-key', baseUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
+    openrouter: { storageKey: 'leos-openrouter-key', baseUrl: 'https://openrouter.ai/api/v1', defaultModel: 'google/gemini-2.0-flash-001' },
   };
 
   const config = keyMap[provider];
   if (config) {
-    const apiKey = typeof localStorage !== 'undefined' ? localStorage.getItem(config.storageKey) : '';
+    const apiKey = typeof localStorage !== 'undefined' ? (localStorage.getItem(config.storageKey) || '').trim() : '';
     if (!apiKey) {
       onChunk(
         `🔑 **${modelName} API Key Required**\n\n` +
@@ -303,7 +378,7 @@ export async function dispatchRealAI({
           model: config.defaultModel,
           messages: [
             ...conversationHistory.map((m) => ({ role: m.role, content: m.content })),
-            { role: 'user', content: prompt },
+            { role: 'user', content: finalPrompt },
           ],
           stream: true,
         }),

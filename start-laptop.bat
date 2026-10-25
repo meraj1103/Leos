@@ -24,8 +24,11 @@ if not exist "node_modules\" (
 
 :: Ensure fresh build exists
 if not exist "dist\index.html" (
-    echo [2/3] Building application bundle...
+    echo [2/3] Building web application bundle...
     call npm run build
+)
+if not exist "dist-electron\main.cjs" (
+    echo [2/3] Building electron desktop bundle...
     call npm run build:electron
 )
 

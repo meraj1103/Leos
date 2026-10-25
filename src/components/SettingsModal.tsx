@@ -1,22 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Settings as SettingsIcon, 
   Download, 
+  Upload,
   Cpu, 
   ShieldCheck, 
-  Check,
-  HardDrive,
-  Sun,
-  Moon,
-  Monitor,
-  Key,
-  ExternalLink,
-  Loader2,
-  CheckCircle2,
-  AlertCircle
+  Check, 
+  HardDrive, 
+  Sun, 
+  Moon, 
+  Monitor, 
+  Key, 
+  ExternalLink, 
+  Loader2, 
+  CheckCircle2, 
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { useChatStore } from '../stores/useChatStore';
+import { useModelStore } from '../stores/useModelStore';
 import { useThemeStore, ThemeMode } from '../stores/useThemeStore';
 import { googleAuthService } from '../services/googleAuthService';
 
@@ -26,7 +29,9 @@ interface SettingsModalProps {
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const { conversations } = useChatStore();
+  const { conversations, setActiveConversation } = useChatStore();
+  const { rescanLocalModels, isScanningLocal } = useModelStore();
+
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
   const [lmStudioUrl, setLmStudioUrl] = useState('http://localhost:1234');
   const [geminiKey, setGeminiKey] = useState('');
@@ -35,11 +40,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [openAIKey, setOpenAIKey] = useState('');
   const [groqKey, setGroqKey] = useState('');
   const [deepseekKey, setDeepseekKey] = useState('');
+  const [openRouterKey, setOpenRouterKey] = useState('');
   const [exported, setExported] = useState(false);
   const [savedKeyMsg, setSavedKeyMsg] = useState(false);
   const [isVerifyingGemini, setIsVerifyingGemini] = useState(false);
   const [geminiStatus, setGeminiStatus] = useState<{ success?: boolean; message?: string } | null>(null);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
+  const importFileRef = useRef<HTMLInputElement>(null);
   const { theme, setTheme } = useThemeStore();
 
   useEffect(() => {
@@ -52,7 +61,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       setOpenAIKey(localStorage.getItem('leos-openai-key') || '');
       setGroqKey(localStorage.getItem('leos-groq-key') || '');
       setDeepseekKey(localStorage.getItem('leos-deepseek-key') || '');
+      setOpenRouterKey(localStorage.getItem('leos-openrouter-key') || '');
       setGeminiStatus(null);
+      setScanMessage(null);
     }
   }, [isOpen]);
 
@@ -60,14 +71,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
   const handleSaveKeys = () => {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('leos-ollama-url', ollamaUrl);
-      localStorage.setItem('leos-lmstudio-url', lmStudioUrl);
+      localStorage.setItem('leos-ollama-url', ollamaUrl.trim());
+      localStorage.setItem('leos-lmstudio-url', lmStudioUrl.trim());
       googleAuthService.setGeminiKey(geminiKey);
       googleAuthService.setClientId(googleClientId);
       localStorage.setItem('leos-anthropic-key', anthropicKey.trim());
       localStorage.setItem('leos-openai-key', openAIKey.trim());
       localStorage.setItem('leos-groq-key', groqKey.trim());
       localStorage.setItem('leos-deepseek-key', deepseekKey.trim());
+      localStorage.setItem('leos-openrouter-key', openRouterKey.trim());
     }
     setSavedKeyMsg(true);
     setTimeout(() => setSavedKeyMsg(false), 2000);
@@ -96,17 +108,66 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     }
   };
 
-  const handleExportJSON = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(conversations, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `leos_chat_export_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+  const handleRescanHardware = async () => {
+    handleSaveKeys();
+    setScanMessage('Scanning local network and GPU...');
+    const count = await rescanLocalModels();
+    setScanMessage(count > 0 ? `Detected ${count} local model(s) ready!` : 'No local models detected on specified endpoints.');
+    setTimeout(() => setScanMessage(null), 3500);
+  };
 
-    setExported(true);
-    setTimeout(() => setExported(false), 2500);
+  const handleExportJSON = () => {
+    try {
+      const jsonString = JSON.stringify(conversations, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.href = url;
+      downloadAnchor.download = `leos_chat_export_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      URL.revokeObjectURL(url);
+
+      setExported(true);
+      setTimeout(() => setExported(false), 2500);
+    } catch (e) {
+      console.error('Export error:', e);
+    }
+  };
+
+  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const raw = evt.target?.result as string;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const current = useChatStore.getState().conversations;
+          const currentIds = new Set(current.map((c) => c.id));
+          const newThreads = parsed.filter((c: any) => c && c.id && !currentIds.has(c.id));
+          const merged = [...newThreads, ...current];
+          useChatStore.setState({ conversations: merged });
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('leos-conversations', JSON.stringify(merged));
+          }
+          if (newThreads.length > 0) {
+            setActiveConversation(newThreads[0].id);
+          }
+          setImportStatus(`Imported ${newThreads.length} conversation(s) successfully!`);
+        } else {
+          setImportStatus('Invalid JSON format: expected list of conversations.');
+        }
+      } catch {
+        setImportStatus('Failed to parse JSON file.');
+      }
+      setTimeout(() => setImportStatus(null), 3500);
+    };
+    reader.readAsText(file);
+    if (importFileRef.current) importFileRef.current.value = '';
   };
 
   const themeOptions: { id: ThemeMode; label: string; icon: React.ReactNode }[] = [
@@ -129,7 +190,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-leos-muted hover:text-leos-text hover:bg-leos-surfaceHover"
+            className="p-1 rounded-lg text-leos-muted hover:text-leos-text hover:bg-leos-surfaceHover cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -148,7 +209,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 <button
                   key={opt.id}
                   onClick={() => setTheme(opt.id)}
-                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-medium transition-all ${
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-medium transition-all cursor-pointer ${
                     theme === opt.id
                       ? 'bg-leos-accent text-black border-leos-accent font-semibold shadow-sm'
                       : 'bg-leos-card border-leos-border text-leos-muted hover:text-leos-text hover:bg-leos-surfaceHover'
@@ -161,7 +222,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           </div>
 
-          {/* Cloud API Keys (Real Connection) */}
+          {/* Cloud API Keys */}
           <div className="pt-3 border-t border-leos-border space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="text-xs font-semibold text-leos-text flex items-center gap-1.5">
@@ -175,7 +236,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               )}
             </div>
             <p className="text-[11px] text-leos-muted">
-              Keys are encrypted in local storage on your device and never sent to any intermediary server.
+              Keys are stored purely on your local machine and sent only to the respective model providers.
             </p>
 
             <div className="space-y-3">
@@ -208,7 +269,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                       type="button"
                       onClick={handleTestGeminiConnection}
                       disabled={isVerifyingGemini || !geminiKey.trim()}
-                      className="text-[10px] text-leos-accent hover:text-amber-400 font-medium flex items-center gap-1 disabled:opacity-40"
+                      className="text-[10px] text-leos-accent hover:text-amber-400 font-medium flex items-center gap-1 disabled:opacity-40 cursor-pointer"
                     >
                       {isVerifyingGemini ? (
                         <>
@@ -247,7 +308,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
                 <div>
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[10px] text-leos-muted">Google OAuth 2.0 Client ID (for 1-click Google Sign-In)</span>
+                    <span className="text-[10px] text-leos-muted">Google OAuth 2.0 Client ID (Optional)</span>
                     <a
                       href="https://console.cloud.google.com/apis/credentials"
                       target="_blank"
@@ -304,6 +365,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 />
               </div>
 
+              {/* Groq & DeepSeek */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[11px] text-leos-muted block mb-0.5">Groq API Key (console.groq.com)</label>
@@ -329,9 +391,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
                 </div>
               </div>
 
+              {/* OpenRouter Key */}
+              <div>
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="text-[11px] text-leos-muted">OpenRouter API Key (openrouter.ai)</label>
+                  <a
+                    href="https://openrouter.ai/keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] text-leos-muted hover:text-leos-text flex items-center gap-1"
+                  >
+                    openrouter.ai/keys <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </div>
+                <input
+                  type="password"
+                  placeholder="sk-or-v1-..."
+                  value={openRouterKey}
+                  onChange={(e) => setOpenRouterKey(e.target.value)}
+                  onBlur={handleSaveKeys}
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-leos-card border border-leos-border text-xs text-leos-text outline-none font-mono placeholder:text-leos-muted/50"
+                />
+              </div>
+
               <button
                 onClick={handleSaveKeys}
-                className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-leos-accent text-black hover:bg-amber-500 font-semibold text-xs transition-colors shadow-sm"
+                className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-leos-accent text-black hover:bg-amber-500 font-semibold text-xs transition-colors shadow-sm cursor-pointer"
               >
                 <Check className="w-3.5 h-3.5" />
                 <span>Save All Credentials</span>
@@ -341,10 +426,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
           {/* Local LLM Ports */}
           <div className="pt-3 border-t border-leos-border space-y-2">
-            <div className="text-xs font-semibold text-leos-text flex items-center gap-1.5">
-              <Cpu className="w-3.5 h-3.5 text-blue-400" />
-              <span>Local Desktop LLM Endpoints (Free & Offline)</span>
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-semibold text-leos-text flex items-center gap-1.5">
+                <Cpu className="w-3.5 h-3.5 text-blue-400" />
+                <span>Local Desktop LLM Endpoints (Free & Offline)</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRescanHardware}
+                disabled={isScanningLocal}
+                className="text-[11px] text-leos-accent hover:text-amber-400 font-medium flex items-center gap-1 cursor-pointer disabled:opacity-40"
+              >
+                <RefreshCw className={`w-3 h-3 ${isScanningLocal ? 'animate-spin' : ''}`} />
+                <span>{isScanningLocal ? 'Scanning...' : 'Rescan Models'}</span>
+              </button>
             </div>
+
+            {scanMessage && (
+              <div className="text-[11px] text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-1 rounded">
+                {scanMessage}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className="text-[11px] text-leos-muted block mb-1">Ollama Host</label>
@@ -369,22 +472,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
             </div>
           </div>
 
-          {/* Data Export & Portability */}
+          {/* Data Export & Backup */}
           <div className="pt-3 border-t border-leos-border space-y-2">
             <div className="text-xs font-semibold text-leos-text flex items-center gap-1.5">
               <Download className="w-3.5 h-3.5 text-leos-accent" />
               <span>Data Portability & Backup</span>
             </div>
             <p className="text-[11px] text-leos-muted">
-              Export all conversation history, code blocks, and context into a clean JSON file.
+              Export all conversation history into clean JSON, or restore chats from a previous backup file.
             </p>
-            <button
-              onClick={handleExportJSON}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-xs font-medium text-leos-text transition-colors"
-            >
-              {exported ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <HardDrive className="w-3.5 h-3.5" />}
-              <span>{exported ? 'Exported Successfully' : 'Export Chats to JSON'}</span>
-            </button>
+
+            <input
+              type="file"
+              ref={importFileRef}
+              onChange={handleImportJSON}
+              accept=".json"
+              className="hidden"
+            />
+
+            {importStatus && (
+              <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 rounded">
+                {importStatus}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleExportJSON}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-xs font-medium text-leos-text transition-colors cursor-pointer"
+              >
+                {exported ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <HardDrive className="w-3.5 h-3.5" />}
+                <span>{exported ? 'Exported Successfully' : 'Export Chats (JSON)'}</span>
+              </button>
+
+              <button
+                onClick={() => importFileRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-xs font-medium text-leos-text transition-colors cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5 text-blue-400" />
+                <span>Import Chats (JSON)</span>
+              </button>
+            </div>
           </div>
 
           {/* Privacy & Storage Vault */}
@@ -394,7 +522,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               <span>Zero-Knowledge Vault</span>
             </div>
             <p className="text-[11px] text-leos-muted leading-relaxed">
-              Your conversations and partition cookies are stored purely on your local machine. No external telemetry or intermediary proxy servers.
+              Your conversations, local keys, and partition settings are stored purely on your local machine. No external telemetry or intermediary proxy servers.
             </p>
           </div>
         </div>
@@ -406,7 +534,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               handleSaveKeys();
               onClose();
             }}
-            className="px-4 py-1.5 rounded-lg bg-leos-accent text-black text-xs font-semibold hover:bg-amber-500 transition-colors"
+            className="px-4 py-1.5 rounded-lg bg-leos-accent text-black text-xs font-semibold hover:bg-amber-500 transition-colors cursor-pointer"
           >
             Done
           </button>

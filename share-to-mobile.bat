@@ -10,8 +10,13 @@ echo Make sure your Android device is on the SAME Wi-Fi network as this laptop.
 echo.
 echo Detecting your Laptop's Wi-Fi / Local IP Address:
 echo -------------------------------------------------------
-for /f "tokens=4" %%a in ('route print ^| findstr 0.0.0.0.*0.0.0.0') do (
+for /f "usebackq tokens=*" %%a in (`powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notlike '*Loopback*' -and $_.InterfaceAlias -notlike '*vEthernet*' -and $_.InterfaceAlias -notlike '*WSL*' -and $_.IPAddress -notlike '169.254*' } | Sort-Object -Property InterfaceIndex | Select-Object -ExpandProperty IPAddress -First 1)"`) do (
     set LOCAL_IP=%%a
+)
+if "%LOCAL_IP%"=="" (
+    for /f "tokens=4" %%a in ('route print ^| findstr 0.0.0.0.*0.0.0.0') do (
+        set LOCAL_IP=%%a
+    )
 )
 echo.
 echo [1] On your Android Phone / Tablet:

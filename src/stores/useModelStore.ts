@@ -1,12 +1,17 @@
 import { create } from 'zustand';
 import { LeosModel } from '../types';
+import { detectLocalModels } from '../services/localLLMService';
 
 interface ModelState {
   models: LeosModel[];
   activeModelId: string;
+  isScanningLocal: boolean;
   setActiveModel: (id: string) => void;
   addLocalModels: (localModels: LeosModel[]) => void;
+  rescanLocalModels: () => Promise<number>;
 }
+
+const ACTIVE_MODEL_KEY = 'leos-active-model-id';
 
 const DEFAULT_MODELS: LeosModel[] = [
   // Google Native Models
@@ -88,16 +93,56 @@ const DEFAULT_MODELS: LeosModel[] = [
     description: 'Blazing 300+ tokens/sec output for instantaneous generation.',
     tag: '300 tok/s',
   },
+  {
+    id: 'openrouter-gemini-2.0',
+    name: 'Gemini 2.0 (OpenRouter)',
+    provider: 'openrouter',
+    contextWindow: 1000000,
+    supportsVision: true,
+    supportsVoice: false,
+    supportsTools: true,
+    isLocal: false,
+    description: 'Universal multihost model access via unified OpenRouter endpoint.',
+    tag: 'OpenRouter',
+  },
 ];
 
-export const useModelStore = create<ModelState>((set) => ({
+function getInitialActiveModel(): string {
+  if (typeof localStorage !== 'undefined') {
+    const saved = localStorage.getItem(ACTIVE_MODEL_KEY);
+    if (saved && DEFAULT_MODELS.some((m) => m.id === saved)) {
+      return saved;
+    }
+  }
+  return 'gemini-1.5-pro';
+}
+
+export const useModelStore = create<ModelState>((set, get) => ({
   models: DEFAULT_MODELS,
-  activeModelId: 'gemini-1.5-pro',
-  setActiveModel: (id) => set({ activeModelId: id }),
+  activeModelId: getInitialActiveModel(),
+  isScanningLocal: false,
+
+  setActiveModel: (id) => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(ACTIVE_MODEL_KEY, id);
+    }
+    set({ activeModelId: id });
+  },
+
   addLocalModels: (localModels) =>
     set((state) => {
-      // Remove previous local models and add new discovered ones
       const cloudOnly = state.models.filter((m) => !m.isLocal);
       return { models: [...cloudOnly, ...localModels] };
     }),
+
+  rescanLocalModels: async () => {
+    set({ isScanningLocal: true });
+    try {
+      const discovered = await detectLocalModels();
+      get().addLocalModels(discovered);
+      return discovered.length;
+    } finally {
+      set({ isScanningLocal: false });
+    }
+  },
 }));

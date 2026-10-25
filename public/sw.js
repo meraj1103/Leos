@@ -30,22 +30,46 @@ self.addEventListener('fetch', (event) => {
   // Only handle GET requests
   if (event.request.method !== 'GET') return;
 
-  // Let browser handle external APIs or streaming requests natively
   const url = new URL(event.request.url);
+
+  // Only handle http and https schemes
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
+  // Bypass all AI provider APIs, local LLM servers, and backend APIs
   if (
     url.pathname.startsWith('/api') || 
     url.hostname.includes('googleapis') || 
     url.hostname.includes('openai') || 
     url.hostname.includes('anthropic') ||
-    url.hostname.includes('localhost') && url.port === '11434'
+    url.hostname.includes('groq') ||
+    url.hostname.includes('deepseek') ||
+    url.hostname.includes('openrouter') ||
+    url.port === '11434' || // Ollama
+    url.port === '1234'      // LM Studio
   ) {
     return;
   }
 
+  // Navigation requests: Network first with cache fallback
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match('/index.html') || caches.match('/'))
+    );
+    return;
+  }
+
+  // Static assets: Cache first with network background update
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Return cache but update in background
         fetch(event.request)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
@@ -59,7 +83,7 @@ self.addEventListener('fetch', (event) => {
       }
 
       return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+        if (!networkResponse || networkResponse.status !== 200) {
           return networkResponse;
         }
 
@@ -71,8 +95,7 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       });
     }).catch(() => {
-      // Offline fallback
-      return caches.match('/');
+      return caches.match('/index.html') || caches.match('/');
     })
   );
 });

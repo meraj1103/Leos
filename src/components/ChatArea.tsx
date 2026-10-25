@@ -16,6 +16,159 @@ import { useAccountStore } from '../stores/useAccountStore';
 import { LeosModel } from '../types';
 import { Logo } from './Logo';
 
+/**
+ * Syntax-styled code block with 1-click copy button
+ */
+const CodeBlock: React.FC<{ language: string; code: string }> = ({ language, code }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="my-3 rounded-xl overflow-hidden border border-leos-border bg-leos-dark/90 shadow-md">
+      <div className="flex items-center justify-between px-3.5 py-1.5 bg-leos-surface border-b border-leos-border text-xs text-leos-muted">
+        <span className="font-mono text-[11px] font-semibold text-leos-accent uppercase tracking-wider">
+          {language}
+        </span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 text-[11px] hover:text-leos-text transition-colors cursor-pointer px-1.5 py-0.5 rounded hover:bg-leos-card"
+        >
+          {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+          <span>{copied ? 'Copied' : 'Copy'}</span>
+        </button>
+      </div>
+      <pre className="p-3.5 overflow-x-auto font-mono text-xs text-leos-text leading-relaxed">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+};
+
+/**
+ * Renders inline markdown tokens (bold, italics, inline code, links)
+ */
+function renderInlineMarkdown(text: string): React.ReactNode {
+  // Regex to split by inline code, bold, italics, links
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s]+)/g);
+
+  return parts.map((part, i) => {
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return (
+        <code key={i} className="px-1.5 py-0.5 rounded bg-leos-card border border-leos-border font-mono text-xs text-amber-400">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return (
+        <strong key={i} className="font-semibold text-leos-text">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (part.startsWith('*') && part.endsWith('*')) {
+      return (
+        <em key={i} className="italic text-leos-muted">
+          {part.slice(1, -1)}
+        </em>
+      );
+    }
+    if (part.startsWith('http://') || part.startsWith('https://')) {
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noreferrer"
+          className="text-leos-accent hover:underline break-all"
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+}
+
+/**
+ * Structured Markdown Parser for assistant messages
+ */
+const FormattedMessage: React.FC<{ content: string }> = ({ content }) => {
+  // Split into code blocks vs regular markdown
+  const parts = content.split(/(```[\s\S]*?```)/g);
+
+  return (
+    <div className="space-y-2.5 leading-relaxed text-sm">
+      {parts.map((part, idx) => {
+        if (part.startsWith('```') && part.endsWith('```')) {
+          const lines = part.slice(3, -3).split('\n');
+          const lang = lines[0].trim() || 'code';
+          const code = lines.slice(1).join('\n');
+          return <CodeBlock key={idx} language={lang} code={code} />;
+        }
+
+        // Render paragraphs, headings, bullet lists
+        return (
+          <div key={idx} className="space-y-2">
+            {part.split('\n\n').map((paragraph, pIdx) => {
+              const trimmed = paragraph.trim();
+              if (!trimmed) return null;
+
+              if (trimmed.startsWith('### ')) {
+                return (
+                  <h3 key={pIdx} className="text-sm font-bold text-leos-text pt-1.5">
+                    {renderInlineMarkdown(trimmed.slice(4))}
+                  </h3>
+                );
+              }
+              if (trimmed.startsWith('## ')) {
+                return (
+                  <h2 key={pIdx} className="text-base font-bold text-leos-text pt-2">
+                    {renderInlineMarkdown(trimmed.slice(3))}
+                  </h2>
+                );
+              }
+              if (trimmed.startsWith('# ')) {
+                return (
+                  <h1 key={pIdx} className="text-lg font-bold text-leos-text pt-2">
+                    {renderInlineMarkdown(trimmed.slice(2))}
+                  </h1>
+                );
+              }
+
+              // Check for bullet lists
+              const lines = paragraph.split('\n');
+              const isList = lines.length > 1 && lines.every((l) => l.trim().startsWith('• ') || l.trim().startsWith('- ') || l.trim().startsWith('* ') || /^\d+\.\s/.test(l.trim()));
+              if (isList) {
+                return (
+                  <ul key={pIdx} className="list-disc list-inside space-y-1 pl-1">
+                    {lines.map((line, lIdx) => (
+                      <li key={lIdx} className="text-leos-text">
+                        {renderInlineMarkdown(line.replace(/^(\s*[-*•]\s*|\s*\d+\.\s*)/, ''))}
+                      </li>
+                    ))}
+                  </ul>
+                );
+              }
+
+              return (
+                <p key={pIdx} className="text-leos-text whitespace-pre-wrap">
+                  {renderInlineMarkdown(paragraph)}
+                </p>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 export const ChatArea: React.FC = () => {
   const { 
     conversations, 
@@ -34,10 +187,12 @@ export const ChatArea: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [activeRegenMenuId, setActiveRegenMenuId] = useState<string | null>(null);
 
-  // Auto-scroll on new messages or streaming chunks
+  // Auto-scroll on new messages or streaming chunks without jitter
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentConv?.messages, isStreaming]);
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' });
+    }
+  }, [currentConv?.messages?.length, isStreaming]);
 
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -52,8 +207,8 @@ export const ChatArea: React.FC = () => {
       model.id,
       model.name,
       model.provider,
-      activeAccount.id,
-      activeAccount.email
+      activeAccount?.id,
+      activeAccount?.email
     );
   };
 
@@ -66,7 +221,7 @@ export const ChatArea: React.FC = () => {
         </div>
         <h2 className="text-xl font-bold text-leos-text mb-1 tracking-tight">Leos AI Workspace</h2>
         <p className="text-xs text-leos-muted max-w-md mb-6 leading-relaxed">
-          Welcome <span className="text-leos-text font-semibold">{activeAccount?.name}</span>. Switch models mid-chat, run offline local LLMs, and use Google Gemini tools.
+          Welcome <span className="text-leos-text font-semibold">{activeAccount?.name || 'Pilot'}</span>. Switch models mid-chat, run offline local LLMs, and connect tools seamlessly.
         </p>
 
         {/* AI Models Showcase Carousel / Pills */}
@@ -77,7 +232,7 @@ export const ChatArea: React.FC = () => {
               <span>Available AI Engines (Click to Select)</span>
             </span>
             <span className="text-[10px] text-leos-muted font-mono">
-              Active: <span className="text-leos-accent font-semibold">{models.find(m => m.id === activeModelId)?.name}</span>
+              Active: <span className="text-leos-accent font-semibold">{models.find(m => m.id === activeModelId)?.name || 'Default'}</span>
             </span>
           </div>
 
@@ -154,7 +309,7 @@ export const ChatArea: React.FC = () => {
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
       <div className="max-w-3xl mx-auto space-y-6">
-        {currentConv.messages.map((msg, index) => {
+        {currentConv.messages.map((msg) => {
           const isUser = msg.role === 'user';
 
           return (
@@ -186,7 +341,7 @@ export const ChatArea: React.FC = () => {
                 </span>
               </div>
 
-              {/* Message Attachments (if user attached any) */}
+              {/* Message Attachments (if attached) */}
               {msg.attachments && msg.attachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 px-1">
                   {msg.attachments.map((att) => (
@@ -211,7 +366,11 @@ export const ChatArea: React.FC = () => {
                     : 'bg-transparent text-leos-text max-w-full'
                 }`}
               >
-                <div className="whitespace-pre-wrap font-sans text-sm">{msg.content}</div>
+                {isUser ? (
+                  <div className="whitespace-pre-wrap font-sans text-sm">{msg.content}</div>
+                ) : (
+                  <FormattedMessage content={msg.content} />
+                )}
               </div>
 
               {/* Assistant Message Actions: Copy & Regenerate with other model */}
@@ -219,7 +378,7 @@ export const ChatArea: React.FC = () => {
                 <div className="flex items-center gap-2 px-1 pt-1 text-xs text-leos-muted relative">
                   <button
                     onClick={() => handleCopy(msg.id, msg.content)}
-                    className="flex items-center gap-1 p-1 hover:text-leos-text rounded transition-colors"
+                    className="flex items-center gap-1 p-1 hover:text-leos-text rounded transition-colors cursor-pointer"
                     title="Copy message"
                   >
                     {copiedId === msg.id ? (
@@ -236,7 +395,7 @@ export const ChatArea: React.FC = () => {
                       onClick={() =>
                         setActiveRegenMenuId(activeRegenMenuId === msg.id ? null : msg.id)
                       }
-                      className="flex items-center gap-1 p-1 hover:text-leos-text rounded transition-colors"
+                      className="flex items-center gap-1 p-1 hover:text-leos-text rounded transition-colors cursor-pointer"
                       title="Regenerate with an alternative model"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />

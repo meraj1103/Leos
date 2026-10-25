@@ -9,7 +9,8 @@ import {
   Check, 
   Zap,
   Sun,
-  Moon
+  Moon,
+  RefreshCw
 } from 'lucide-react';
 import { useModelStore } from '../stores/useModelStore';
 import { useAccountStore } from '../stores/useAccountStore';
@@ -31,7 +32,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { models, activeModelId, setActiveModel } = useModelStore();
+  const { models, activeModelId, setActiveModel, rescanLocalModels, isScanningLocal } = useModelStore();
   const { accounts, activeAccountId } = useAccountStore();
   const { resolvedTheme, setTheme } = useThemeStore();
 
@@ -60,7 +61,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       <div className="flex items-center gap-2">
         <button
           onClick={onToggleSidebar}
-          className="p-1.5 rounded-md hover:bg-leos-surfaceHover text-leos-muted hover:text-leos-text transition-colors"
+          className="p-1.5 rounded-md hover:bg-leos-surfaceHover text-leos-muted hover:text-leos-text transition-colors cursor-pointer"
           title="Toggle Sidebar"
         >
           <PanelLeft className="w-4 h-4" />
@@ -70,16 +71,16 @@ export const TopBar: React.FC<TopBarProps> = ({
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border hover:border-leos-borderLight transition-all text-xs font-medium text-leos-text shadow-sm"
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border hover:border-leos-borderLight transition-all text-xs font-medium text-leos-text shadow-sm cursor-pointer"
           >
             {activeModel.isLocal ? (
               <Cpu className="w-3.5 h-3.5 text-blue-400" />
             ) : (
               <Sparkles className="w-3.5 h-3.5 text-leos-accent" />
             )}
-            <span>{activeModel.name}</span>
+            <span className="truncate max-w-[140px] sm:max-w-[200px]">{activeModel.name}</span>
             {activeModel.tag && (
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-leos-border text-leos-muted">
+              <span className="hidden sm:inline-block text-[10px] font-mono px-1.5 py-0.2 rounded bg-leos-border text-leos-muted">
                 {activeModel.tag}
               </span>
             )}
@@ -89,8 +90,20 @@ export const TopBar: React.FC<TopBarProps> = ({
           {/* Model Selection Dropdown Menu */}
           {isDropdownOpen && (
             <div className="absolute top-full left-0 mt-1.5 w-72 max-h-96 overflow-y-auto bg-leos-surface border border-leos-border rounded-xl shadow-xl z-50 p-1.5 space-y-1">
-              <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-leos-muted">
-                Select Model Engine
+              <div className="flex items-center justify-between px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-leos-muted">
+                <span>Select Model Engine</span>
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await rescanLocalModels();
+                  }}
+                  disabled={isScanningLocal}
+                  className="flex items-center gap-1 text-leos-accent hover:text-amber-400 cursor-pointer disabled:opacity-40 normal-case font-sans"
+                >
+                  <RefreshCw className={`w-2.5 h-2.5 ${isScanningLocal ? 'animate-spin' : ''}`} />
+                  <span>{isScanningLocal ? 'Scanning...' : 'Rescan'}</span>
+                </button>
               </div>
 
               {/* Cloud Models */}
@@ -113,11 +126,11 @@ export const TopBar: React.FC<TopBarProps> = ({
                             : 'text-leos-muted hover:bg-leos-card hover:text-leos-text'
                         }`}
                       >
-                        <div className="flex flex-col">
-                          <span className="text-leos-text font-medium">{m.name}</span>
+                        <div className="flex flex-col truncate pr-2">
+                          <span className="text-leos-text font-medium truncate">{m.name}</span>
                           <span className="text-[10px] text-leos-muted truncate">{m.description}</span>
                         </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-leos-accent shrink-0 ml-2" />}
+                        {isSelected && <Check className="w-3.5 h-3.5 text-leos-accent shrink-0 ml-1" />}
                       </div>
                     );
                   })}
@@ -129,28 +142,34 @@ export const TopBar: React.FC<TopBarProps> = ({
                   <Cpu className="w-3 h-3 text-blue-400" />
                   <span>Local Desktop (Offline GPU)</span>
                 </div>
-                {models
-                  .filter((m) => m.isLocal)
-                  .map((m) => {
-                    const isSelected = m.id === activeModelId;
-                    return (
-                      <div
-                        key={m.id}
-                        onClick={() => handleSelectModel(m)}
-                        className={`flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer text-xs transition-colors ${
-                          isSelected
-                            ? 'bg-leos-surfaceHover text-leos-text font-medium'
-                            : 'text-leos-muted hover:bg-leos-card hover:text-leos-text'
-                        }`}
-                      >
-                        <div className="flex flex-col">
-                          <span className="text-leos-text font-medium">{m.name}</span>
-                          <span className="text-[10px] text-leos-muted truncate">{m.description}</span>
+                {models.filter((m) => m.isLocal).length === 0 ? (
+                  <div className="px-2 py-2 text-[11px] text-leos-muted italic">
+                    No local models running. Start Ollama or LM Studio and tap Rescan.
+                  </div>
+                ) : (
+                  models
+                    .filter((m) => m.isLocal)
+                    .map((m) => {
+                      const isSelected = m.id === activeModelId;
+                      return (
+                        <div
+                          key={m.id}
+                          onClick={() => handleSelectModel(m)}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer text-xs transition-colors ${
+                            isSelected
+                              ? 'bg-leos-surfaceHover text-leos-text font-medium'
+                              : 'text-leos-muted hover:bg-leos-card hover:text-leos-text'
+                          }`}
+                        >
+                          <div className="flex flex-col truncate pr-2">
+                            <span className="text-leos-text font-medium truncate">{m.name}</span>
+                            <span className="text-[10px] text-leos-muted truncate">{m.description}</span>
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0 ml-1" />}
                         </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0 ml-2" />}
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                )}
               </div>
             </div>
           )}
@@ -159,14 +178,14 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Current Active Account Indicator */}
         <button
           onClick={onOpenAccounts}
-          className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-leos-card/60 hover:bg-leos-surfaceHover border border-leos-border/60 hover:border-leos-border transition-all text-xs"
+          className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-leos-card/60 hover:bg-leos-surfaceHover border border-leos-border/60 hover:border-leos-border transition-all text-xs cursor-pointer"
           title="Active Account Session (Click to manage)"
         >
           {activeAccount?.avatarUrl ? (
             <div className="relative shrink-0">
               <img
                 src={activeAccount.avatarUrl}
-                alt={activeAccount.name}
+                alt={activeAccount.name || 'Account'}
                 className="w-4 h-4 rounded-full object-cover"
               />
               <div className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-1 ring-leos-card"></div>
@@ -182,13 +201,13 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right: Actions (Voice Talk Mode, Split View, Privacy Badge) */}
       <div className="flex items-center gap-1.5">
-        {/* 1-Tap PWA Install Button (shows when installable on Android / Laptop browser) */}
+        {/* 1-Tap PWA Install Button */}
         <InstallButton />
 
         {/* Theme Toggle (Light / Dark) */}
         <button
           onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-          className="p-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-leos-muted hover:text-leos-text transition-colors shadow-sm"
+          className="p-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-leos-muted hover:text-leos-text transition-colors shadow-sm cursor-pointer"
           title={`Switch to ${resolvedTheme === 'dark' ? 'Light' : 'Dark'} Mode`}
         >
           {resolvedTheme === 'dark' ? (
@@ -201,7 +220,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Two-Way Voice Talk Mode Button */}
         <button
           onClick={onOpenVoiceModal}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-xs font-medium text-leos-text transition-all hover:border-leos-borderLight shadow-sm"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-xs font-medium text-leos-text transition-all hover:border-leos-borderLight shadow-sm cursor-pointer"
           title="Two-Way Voice Conversation"
         >
           <Headphones className="w-3.5 h-3.5 text-leos-accent" />

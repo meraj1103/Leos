@@ -7,7 +7,8 @@ import {
   HardDrive, 
   Cloud, 
   Globe, 
-  GitBranch
+  GitBranch,
+  Trash2
 } from 'lucide-react';
 import { useMCPStore } from '../stores/useMCPStore';
 
@@ -17,7 +18,7 @@ interface MCPModalProps {
 }
 
 export const MCPModal: React.FC<MCPModalProps> = ({ isOpen, onClose }) => {
-  const { servers, toggleServer, addServer } = useMCPStore();
+  const { servers, toggleServer, addServer, removeServer } = useMCPStore();
   const [isAddingCustom, setIsAddingCustom] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customCommand, setCustomCommand] = useState('');
@@ -96,17 +97,26 @@ export const MCPModal: React.FC<MCPModalProps> = ({ isOpen, onClose }) => {
                 </div>
               </div>
 
-              {/* Toggle Switch */}
-              <button
-                onClick={() => toggleServer(server.id)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                  server.enabled
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-leos-surface text-leos-muted border border-leos-border'
-                }`}
-              >
-                {server.enabled ? 'Enabled' : 'Disabled'}
-              </button>
+              {/* Toggle Switch & Remove */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toggleServer(server.id)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                    server.enabled
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                      : 'bg-leos-surface text-leos-muted border border-leos-border'
+                  }`}
+                >
+                  {server.enabled ? 'Enabled' : 'Disabled'}
+                </button>
+                <button
+                  onClick={() => removeServer(server.id)}
+                  className="p-1 rounded text-leos-muted hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                  title="Remove MCP server"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           ))}
         </div>

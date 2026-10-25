@@ -20,7 +20,12 @@ export const App: React.FC = () => {
     return false;
   });
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 768;
+    }
+    return true;
+  });
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isMCPModalOpen, setIsMCPModalOpen] = useState(false);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
@@ -52,10 +57,11 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-leos-dark text-leos-text">
+    <div className="flex h-screen h-[100dvh] w-screen overflow-hidden bg-leos-dark text-leos-text">
       {/* Sidebar Navigation */}
       <Sidebar
         isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
         onOpenAccounts={() => setIsAccountModalOpen(true)}
         onOpenMCP={() => setIsMCPModalOpen(true)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}

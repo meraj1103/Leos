@@ -19,11 +19,13 @@ import { LeosAttachment } from '../types';
 export const PromptBar: React.FC = () => {
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [interimVoice, setInterimVoice] = useState('');
   const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const baseInputRef = useRef('');
 
   const { 
     sendMessage, 
@@ -46,21 +48,24 @@ export const PromptBar: React.FC = () => {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
     }
-  }, [input]);
+  }, [input, interimVoice]);
 
   const handleSend = () => {
-    if ((!input.trim() && activeAttachments.length === 0) || isStreaming) return;
+    const trimmed = input.trim();
+    if ((!trimmed && activeAttachments.length === 0) || isStreaming) return;
     
     sendMessage(
-      input.trim(),
-      activeModel.id,
-      activeModel.name,
-      activeModel.provider,
+      trimmed,
+      activeModel?.id || 'gemini-1.5-pro',
+      activeModel?.name || 'Gemini 1.5 Pro',
+      activeModel?.provider || 'google',
       activeAccount?.id,
       activeAccount?.email
     );
     
     setInput('');
+    baseInputRef.current = '';
+    setInterimVoice('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -73,24 +78,40 @@ export const PromptBar: React.FC = () => {
     }
   };
 
-  // Toggle voice dictation using the vector mic
+  // Toggle voice dictation with proper interim vs final result handling
   const toggleVoiceDictation = () => {
     if (isListening) {
       speechService.stopListening();
       setIsListening(false);
+      setInterimVoice('');
     } else {
+      baseInputRef.current = input;
       speechService.startListening({
         onStart: () => setIsListening(true),
-        onResult: (transcript) => {
-          setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        onResult: (transcript, isFinal) => {
+          if (isFinal) {
+            const prefix = baseInputRef.current ? `${baseInputRef.current.trim()} ` : '';
+            const updated = `${prefix}${transcript}`.trim();
+            baseInputRef.current = updated;
+            setInput(updated);
+            setInterimVoice('');
+          } else {
+            setInterimVoice(transcript);
+          }
         },
-        onError: () => setIsListening(false),
-        onEnd: () => setIsListening(false),
+        onError: () => {
+          setIsListening(false);
+          setInterimVoice('');
+        },
+        onEnd: () => {
+          setIsListening(false);
+          setInterimVoice('');
+        },
       });
     }
   };
 
-  // File Upload Handlers (Documents & Photos)
+  // File Upload Handlers (Documents, Code & Photos)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -98,16 +119,18 @@ export const PromptBar: React.FC = () => {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const isImg = file.type.startsWith('image/');
-      
+      const isText = 
+        file.type.startsWith('text/') || 
+        /\.(txt|md|json|csv|js|ts|tsx|jsx|py|html|css|yaml|yml|xml|sql)$/i.test(file.name);
+
       const newAttachment: LeosAttachment = {
         id: `att-${Date.now()}-${i}`,
         name: file.name,
         type: isImg ? 'image' : 'document',
         size: file.size,
-        mimeType: file.type,
+        mimeType: file.type || (isImg ? 'image/jpeg' : 'text/plain'),
       };
 
-      // Read content preview locally
       const reader = new FileReader();
       reader.onload = (event) => {
         newAttachment.content = event.target?.result as string;
@@ -116,8 +139,12 @@ export const PromptBar: React.FC = () => {
 
       if (isImg) {
         reader.readAsDataURL(file);
-      } else {
+      } else if (isText) {
         reader.readAsText(file);
+      } else {
+        // For PDFs or binary items, record metadata and clean placeholder notice without injecting raw garbage
+        newAttachment.content = `[Attached Document: ${file.name} (${(file.size / 1024).toFixed(1)} KB)]`;
+        addAttachment(newAttachment);
       }
     }
 
@@ -152,7 +179,7 @@ export const PromptBar: React.FC = () => {
               <span className="truncate max-w-[140px] font-medium">{att.name}</span>
               <button
                 onClick={() => removeAttachment(att.id)}
-                className="p-0.5 rounded hover:bg-leos-surfaceHover text-leos-muted hover:text-leos-text"
+                className="p-0.5 rounded hover:bg-leos-surfaceHover text-leos-muted hover:text-leos-text cursor-pointer"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -169,7 +196,7 @@ export const PromptBar: React.FC = () => {
           ref={fileInputRef}
           onChange={handleFileChange}
           multiple
-          accept="image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.py"
+          accept="image/*,.pdf,.txt,.md,.json,.csv,.js,.ts,.py,.html,.css"
           className="hidden"
         />
 
@@ -178,12 +205,23 @@ export const PromptBar: React.FC = () => {
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              baseInputRef.current = e.target.value;
+            }}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder={`Ask ${activeModel.name} (${activeAccount?.name || 'Account'})...`}
+            placeholder={`Ask ${activeModel?.name || 'AI'} (${activeAccount?.name || 'Account'})...`}
             className="w-full bg-transparent border-none outline-none resize-none text-sm text-leos-text placeholder:text-leos-muted leading-relaxed max-h-44"
           />
+
+          {/* Live speech dictation indicator */}
+          {interimVoice && (
+            <div className="text-xs text-amber-400/80 italic font-mono pb-1 animate-pulse flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              <span>{interimVoice}...</span>
+            </div>
+          )}
         </div>
 
         {/* Action Controls Footer */}
@@ -192,15 +230,15 @@ export const PromptBar: React.FC = () => {
           <div className="flex items-center gap-1">
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="p-1.5 rounded-lg hover:bg-leos-surfaceHover text-leos-muted hover:text-leos-text transition-colors"
-              title="Attach document or image"
+              className="p-1.5 rounded-lg hover:bg-leos-surfaceHover text-leos-muted hover:text-leos-text transition-colors cursor-pointer"
+              title="Attach document, code, or image"
             >
               <Paperclip className="w-4 h-4" />
             </button>
 
             <button
               onClick={() => setIsUrlModalOpen(!isUrlModalOpen)}
-              className="p-1.5 rounded-lg hover:bg-leos-surfaceHover text-leos-muted hover:text-leos-text transition-colors"
+              className="p-1.5 rounded-lg hover:bg-leos-surfaceHover text-leos-muted hover:text-leos-text transition-colors cursor-pointer"
               title="Add Web URL reference"
             >
               <Globe className="w-4 h-4" />
@@ -209,10 +247,10 @@ export const PromptBar: React.FC = () => {
 
           {/* Right Buttons: Voice Dictation Mic & Send/Stop */}
           <div className="flex items-center gap-2">
-            {/* Professional Vector Microphone (matches user reference, zero emoji) */}
+            {/* Vector Microphone */}
             <button
               onClick={toggleVoiceDictation}
-              className={`p-1.5 rounded-lg transition-all ${
+              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
                 isListening
                   ? 'bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse'
                   : 'hover:bg-leos-surfaceHover text-leos-muted hover:text-leos-text'
@@ -230,7 +268,7 @@ export const PromptBar: React.FC = () => {
             {isStreaming ? (
               <button
                 onClick={stopGenerating}
-                className="p-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-leos-text transition-colors shadow-sm"
+                className="p-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-leos-text transition-colors shadow-sm cursor-pointer"
                 title="Stop generation"
               >
                 <Square className="w-4 h-4 text-red-400 fill-current" />
@@ -239,7 +277,7 @@ export const PromptBar: React.FC = () => {
               <button
                 onClick={handleSend}
                 disabled={!input.trim() && activeAttachments.length === 0}
-                className="p-1.5 rounded-lg bg-leos-accent hover:bg-amber-500 disabled:opacity-30 disabled:hover:bg-leos-accent text-black font-semibold transition-all shadow-sm"
+                className="p-1.5 rounded-lg bg-leos-accent hover:bg-amber-500 disabled:opacity-30 disabled:hover:bg-leos-accent text-black font-semibold transition-all shadow-sm cursor-pointer"
                 title="Send prompt"
               >
                 <ArrowUp className="w-4 h-4 stroke-[2.5]" />
@@ -263,13 +301,13 @@ export const PromptBar: React.FC = () => {
           />
           <button
             onClick={handleAddUrl}
-            className="px-2.5 py-1 bg-leos-card hover:bg-leos-surfaceHover border border-leos-border rounded-md text-xs text-leos-text font-medium shrink-0"
+            className="px-2.5 py-1 bg-leos-card hover:bg-leos-surfaceHover border border-leos-border rounded-md text-xs text-leos-text font-medium shrink-0 cursor-pointer"
           >
             Add
           </button>
           <button
             onClick={() => setIsUrlModalOpen(false)}
-            className="p-1 text-leos-muted hover:text-leos-text shrink-0"
+            className="p-1 text-leos-muted hover:text-leos-text shrink-0 cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
           </button>

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { LeosConversation, LeosMessage, LeosAttachment } from '../types';
 import { dispatchRealAI } from '../services/aiDispatcher';
+import { useMCPStore } from './useMCPStore';
 
 interface ChatState {
   conversations: LeosConversation[];
@@ -35,6 +36,14 @@ interface ChatState {
     accountId?: string,
     accountEmail?: string
   ) => Promise<void>;
+
+  addVoiceExchange: (
+    userPrompt: string,
+    assistantReply: string,
+    modelName: string,
+    provider: any,
+    accountEmail?: string
+  ) => void;
 }
 
 const SAVED_CHATS_KEY = 'leos-conversations';
@@ -62,9 +71,35 @@ function loadInitialConversations(): LeosConversation[] {
 
 const INITIAL_CONVERSATIONS: LeosConversation[] = loadInitialConversations();
 
+/**
+ * Safe local storage persistence that handles 5MB browser quota limits
+ * by stripping or truncating bulky base64 data URLs if needed.
+ */
 function persistConversations(convs: LeosConversation[]) {
-  if (typeof localStorage !== 'undefined') {
+  if (typeof localStorage === 'undefined') return;
+
+  try {
     localStorage.setItem(SAVED_CHATS_KEY, JSON.stringify(convs));
+  } catch (err) {
+    console.warn('LocalStorage quota limit reached, saving lightweight message history:', err);
+    try {
+      const lightweight = convs.map((c) => ({
+        ...c,
+        messages: c.messages.map((m) => ({
+          ...m,
+          attachments: m.attachments?.map((a) => ({
+            ...a,
+            // Omit raw giant base64 payloads from localStorage to stay well below 5MB quota
+            content: a.content && a.content.length > 300 
+              ? a.content.slice(0, 300) + '... [Data truncated for local storage]'
+              : a.content,
+          })),
+        })),
+      }));
+      localStorage.setItem(SAVED_CHATS_KEY, JSON.stringify(lightweight));
+    } catch (fallbackErr) {
+      console.error('Failed to persist conversations even with lightweight fallback:', fallbackErr);
+    }
   }
 }
 
@@ -114,7 +149,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       persistConversations(remaining);
       return {
         conversations: remaining,
-        activeConversationId: remaining[0].id,
+        // Only change active conversation if the user deleted the currently active thread
+        activeConversationId: state.activeConversationId === id ? remaining[0].id : state.activeConversationId,
       };
     }),
 
@@ -141,12 +177,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
           .map((m) => ({ role: m.role, content: m.content }))
       : [];
 
+    const currentAttachments = [...activeAttachments];
+
     const userMsg: LeosMessage = {
       id: `msg-${Date.now()}`,
       role: 'user',
       content,
       timestamp: Date.now(),
-      attachments: [...activeAttachments],
+      attachments: currentAttachments,
     };
 
     const assistantMsgId = `msg-assistant-${Date.now()}`;
@@ -166,14 +204,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const controller = new AbortController();
 
-    // Add user message & placeholder
+    // Add user message & placeholder assistant bubble
     set((state) => {
       const updated = state.conversations.map((conv) => {
         if (conv.id === activeConversationId) {
           const isFirstMessage = conv.messages.length === 0;
+          let computedTitle = conv.title;
+          if (isFirstMessage) {
+            if (content.trim()) {
+              computedTitle = content.length > 35 ? content.slice(0, 35) + '...' : content.trim();
+            } else if (currentAttachments.length > 0) {
+              computedTitle = `Attachment: ${currentAttachments[0].name.slice(0, 25)}`;
+            }
+          }
           return {
             ...conv,
-            title: isFirstMessage ? content.slice(0, 35) : conv.title,
+            title: computedTitle,
             updatedAt: Date.now(),
             messages: [...conv.messages, userMsg, assistantMsg],
           };
@@ -191,12 +237,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     try {
       let accumulated = '';
+      const mcpContext = useMCPStore.getState().getActiveMCPContext?.() || '';
+
       await dispatchRealAI({
         modelId,
         modelName,
         provider,
         prompt: content,
         conversationHistory: existingHistory,
+        attachments: currentAttachments,
+        mcpContext,
         signal: controller.signal,
         onChunk: (chunk) => {
           accumulated += chunk;
@@ -258,6 +308,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Find the user prompt right before this assistant message
     const msgIndex = currentConv.messages.findIndex((m) => m.id === messageId);
     const userPrompt = msgIndex > 0 ? currentConv.messages[msgIndex - 1].content : '';
+    const userAttachments = msgIndex > 0 ? currentConv.messages[msgIndex - 1].attachments : undefined;
+
     const existingHistory = currentConv.messages
       .slice(0, Math.max(0, msgIndex - 1))
       .filter((m) => m.content.trim())
@@ -295,12 +347,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     try {
       let accumulated = '';
+      const mcpContext = useMCPStore.getState().getActiveMCPContext?.() || '';
+
       await dispatchRealAI({
         modelId: newModelId,
         modelName: newModelName,
         provider: newProvider,
         prompt: userPrompt || 'Regenerate response',
         conversationHistory: existingHistory,
+        attachments: userAttachments,
+        mcpContext,
         signal: controller.signal,
         onChunk: (chunk) => {
           accumulated += chunk;
@@ -321,8 +377,67 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
 
       persistConversations(get().conversations);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        const errorText = `❌ Regeneration failed: ${err.message || 'Unknown error'}`;
+        set((state) => ({
+          conversations: state.conversations.map((conv) => {
+            if (conv.id === activeConversationId) {
+              return {
+                ...conv,
+                messages: conv.messages.map((m) =>
+                  m.id === messageId ? { ...m, content: errorText } : m
+                ),
+              };
+            }
+            return conv;
+          }),
+        }));
+      }
     } finally {
       set({ isStreaming: false, abortController: null });
     }
+  },
+
+  addVoiceExchange: (userPrompt, assistantReply, modelName, provider, accountEmail) => {
+    const { activeConversationId, conversations } = get();
+    if (!activeConversationId) return;
+
+    const userMsg: LeosMessage = {
+      id: `msg-voice-user-${Date.now()}`,
+      role: 'user',
+      content: userPrompt,
+      timestamp: Date.now(),
+    };
+
+    const assistantMsg: LeosMessage = {
+      id: `msg-voice-asst-${Date.now()}`,
+      role: 'assistant',
+      content: assistantReply,
+      timestamp: Date.now(),
+      modelInfo: {
+        modelId: `voice-${modelName}`,
+        modelName,
+        provider,
+        accountEmail,
+      },
+    };
+
+    set((state) => {
+      const updated = state.conversations.map((conv) => {
+        if (conv.id === activeConversationId) {
+          const isFirst = conv.messages.length === 0;
+          return {
+            ...conv,
+            title: isFirst ? (userPrompt.slice(0, 35) || 'Voice Session') : conv.title,
+            updatedAt: Date.now(),
+            messages: [...conv.messages, userMsg, assistantMsg],
+          };
+        }
+        return conv;
+      });
+      persistConversations(updated);
+      return { conversations: updated };
+    });
   },
 }));
