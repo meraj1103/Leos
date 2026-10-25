@@ -1,3 +1,8 @@
+/**
+ * Leos Universal AI Cockpit - Type Definitions
+ * Version 1.0.0
+ */
+
 export type ModelProvider = 
   | 'google' 
   | 'anthropic' 
