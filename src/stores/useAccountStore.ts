@@ -10,42 +10,37 @@ interface AccountState {
   updateAccountStatus: (id: string, status: LeosAccount['tokenStatus']) => void;
 }
 
-const DEFAULT_ACCOUNTS: LeosAccount[] = [
-  {
-    id: 'acc-personal',
-    name: 'Personal Account',
-    email: 'user.personal@gmail.com',
-    type: 'personal',
-    partition: 'persist:account_personal',
-    isActive: true,
-    connectedModels: ['gemini-1.5-pro', 'gemini-2.0-flash', 'chatgpt-4o-free', 'claude-3.5-sonnet'],
-    tokenStatus: 'healthy',
-  },
-  {
-    id: 'acc-work',
-    name: 'Work Account',
-    email: 'dev@company.io',
-    type: 'work',
-    partition: 'persist:account_work',
-    isActive: false,
-    connectedModels: ['claude-3.5-sonnet', 'gpt-4o', 'gemini-1.5-pro'],
-    tokenStatus: 'healthy',
-  },
-  {
-    id: 'acc-student',
-    name: 'Research Account',
-    email: 'research@university.edu',
-    type: 'student',
-    partition: 'persist:account_student',
-    isActive: false,
-    connectedModels: ['gemini-1.5-pro', 'deepseek-r1'],
-    tokenStatus: 'healthy',
-  },
-];
+const SAVED_ACCOUNTS_KEY = 'leos-accounts';
+
+function loadInitialAccounts(): LeosAccount[] {
+  if (typeof localStorage !== 'undefined') {
+    const raw = localStorage.getItem(SAVED_ACCOUNTS_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+  }
+  return [
+    {
+      id: 'acc-default',
+      name: 'Default Profile',
+      email: 'local-vault',
+      type: 'personal',
+      partition: 'persist:default',
+      isActive: true,
+      connectedModels: ['gemini-1.5-pro', 'gemini-2.0-flash', 'chatgpt-4o-free', 'claude-3.5-sonnet'],
+      tokenStatus: 'healthy',
+    },
+  ];
+}
+
+const DEFAULT_ACCOUNTS: LeosAccount[] = loadInitialAccounts();
 
 export const useAccountStore = create<AccountState>((set) => ({
   accounts: DEFAULT_ACCOUNTS,
-  activeAccountId: 'acc-personal',
+  activeAccountId: DEFAULT_ACCOUNTS[0]?.id || 'acc-default',
   setActiveAccount: (id) =>
     set((state) => ({
       activeAccountId: id,
@@ -62,14 +57,17 @@ export const useAccountStore = create<AccountState>((set) => ({
       partition: `persist:account_${id}`,
       isActive: false,
     };
-    set((state) => ({
-      accounts: [...state.accounts, newAccount],
-    }));
+    set((state) => {
+      const updated = [...state.accounts, newAccount];
+      if (typeof localStorage !== 'undefined') localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(updated));
+      return { accounts: updated };
+    });
   },
   removeAccount: (id) =>
     set((state) => {
       const remaining = state.accounts.filter((acc) => acc.id !== id);
       const newActive = state.activeAccountId === id && remaining.length > 0 ? remaining[0].id : state.activeAccountId;
+      if (typeof localStorage !== 'undefined') localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(remaining));
       return {
         accounts: remaining,
         activeAccountId: newActive,

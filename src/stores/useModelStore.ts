@@ -88,32 +88,6 @@ const DEFAULT_MODELS: LeosModel[] = [
     description: 'Blazing 300+ tokens/sec output for instantaneous generation.',
     tag: '300 tok/s',
   },
-
-  // Local Offline Models (Ollama & LM Studio default presets)
-  {
-    id: 'local-llama-3.2-3b',
-    name: 'Llama 3.2 3B (Local)',
-    provider: 'ollama',
-    contextWindow: 8192,
-    supportsVision: false,
-    supportsVoice: false,
-    supportsTools: true,
-    isLocal: true,
-    description: 'Runs 100% offline on your device hardware with zero token fees.',
-    tag: 'Offline GPU',
-  },
-  {
-    id: 'local-qwen-2.5-coder',
-    name: 'Qwen 2.5 Coder 7B (Local)',
-    provider: 'ollama',
-    contextWindow: 32768,
-    supportsVision: false,
-    supportsVoice: false,
-    supportsTools: true,
-    isLocal: true,
-    description: 'Specialized local code runner running privately on your laptop/desktop.',
-    tag: 'Local Code',
-  },
 ];
 
 export const useModelStore = create<ModelState>((set) => ({

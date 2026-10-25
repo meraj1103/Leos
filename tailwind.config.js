@@ -9,16 +9,16 @@ export default {
     extend: {
       colors: {
         leos: {
-          dark: '#0e0f12',
-          surface: '#16181d',
-          surfaceHover: '#1e2128',
-          card: '#1a1d24',
-          border: '#2a2e39',
-          borderLight: '#373c49',
-          accent: '#e69500', // warm amber constellation accent
-          accentGlow: 'rgba(230, 149, 0, 0.15)',
-          muted: '#8e96a5',
-          text: '#f1f3f7',
+          dark: 'var(--color-leos-dark)',
+          surface: 'var(--color-leos-surface)',
+          surfaceHover: 'var(--color-leos-surface-hover)',
+          card: 'var(--color-leos-card)',
+          border: 'var(--color-leos-border)',
+          borderLight: 'var(--color-leos-border-light)',
+          accent: 'var(--color-leos-accent)',
+          accentGlow: 'var(--color-leos-accent-glow)',
+          muted: 'var(--color-leos-muted)',
+          text: 'var(--color-leos-text)',
         }
       },
       fontFamily: {

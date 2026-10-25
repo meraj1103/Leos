@@ -29,6 +29,17 @@ function createWindow() {
     callback(false);
   });
 
+  // Allow F12 or Ctrl+Shift+I to toggle DevTools for debugging
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' && input.type === 'keyDown') {
+      mainWindow?.webContents.toggleDevTools();
+    }
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error('Leos failed to load:', errorCode, errorDescription, validatedURL);
+  });
+
   // Load Vite dev server or production bundle
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);

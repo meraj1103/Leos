@@ -10,6 +10,7 @@ import {
 import { speechService } from '../services/speechService';
 import { useModelStore } from '../stores/useModelStore';
 import { useAccountStore } from '../stores/useAccountStore';
+import { dispatchRealAI } from '../services/aiDispatcher';
 
 interface VoiceModalProps {
   isOpen: boolean;
@@ -66,24 +67,38 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({ isOpen, onClose }) => {
     setIsSpeaking(false);
   };
 
-  const handleUserFinishedSpeaking = (finalText: string) => {
+  const handleUserFinishedSpeaking = async (finalText: string) => {
     speechService.stopListening();
     setIsListening(false);
     setStatusMessage(`${activeModel.name} is thinking...`);
+    setAiResponse('');
 
-    // Simulated fast response for voice conversation
-    setTimeout(() => {
-      const sampleVoiceReply = `I heard you clearly. Through your ${activeAccount.name}, I am ready to process your request. Context and tools remain active in this hands-free session.`;
-      setAiResponse(sampleVoiceReply);
+    let accumulated = '';
+    try {
+      await dispatchRealAI({
+        modelId: activeModel.id,
+        modelName: activeModel.name,
+        provider: activeModel.provider,
+        prompt: finalText,
+        conversationHistory: [],
+        onChunk: (chunk) => {
+          accumulated += chunk;
+          setAiResponse(accumulated);
+        },
+      });
+
       setIsSpeaking(true);
       setStatusMessage(`${activeModel.name} is speaking...`);
 
-      speechService.speak(sampleVoiceReply, () => {
+      speechService.speak(accumulated, () => {
         setIsSpeaking(false);
         // Automatically resume listening for continuous two-way talk
         startVoiceSession();
       });
-    }, 700);
+    } catch (err: any) {
+      setStatusMessage(`Error generating response: ${err.message || err}`);
+      setTimeout(() => startVoiceSession(), 2000);
+    }
   };
 
   if (!isOpen) return null;
