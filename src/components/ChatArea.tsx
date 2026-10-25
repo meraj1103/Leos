@@ -14,6 +14,7 @@ import { useChatStore } from '../stores/useChatStore';
 import { useModelStore } from '../stores/useModelStore';
 import { useAccountStore } from '../stores/useAccountStore';
 import { LeosModel } from '../types';
+import { Logo } from './Logo';
 
 export const ChatArea: React.FC = () => {
   const { 
@@ -61,7 +62,7 @@ export const ChatArea: React.FC = () => {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center select-none">
         <div className="w-12 h-12 rounded-2xl bg-leos-surface border border-leos-border flex items-center justify-center mb-4 shadow-sm">
-          <img src="/logo.svg" alt="Leos" className="w-8 h-8 rounded-xl" />
+          <Logo className="w-8 h-8" />
         </div>
         <h2 className="text-lg font-semibold text-leos-text mb-1 tracking-tight">Leos Workspace</h2>
         <p className="text-xs text-leos-muted max-w-md mb-8 leading-relaxed">

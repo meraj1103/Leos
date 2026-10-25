@@ -11,6 +11,7 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: '#0e0f12',
     title: 'Leos - Universal AI Cockpit',
+    icon: path.join(__dirname, '../public/logo.svg'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,

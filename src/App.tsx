@@ -7,10 +7,19 @@ import { AccountModal } from './components/AccountModal';
 import { MCPModal } from './components/MCPModal';
 import { VoiceModal } from './components/VoiceModal';
 import { SettingsModal } from './components/SettingsModal';
+import { LoginPage } from './components/LoginPage';
 import { detectLocalModels } from './services/localLLMService';
 import { useModelStore } from './stores/useModelStore';
 
 export const App: React.FC = () => {
+  // First time check: if no login session exists, open the Login page first
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem('leos-logged-in') === 'true';
+    }
+    return false;
+  });
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isMCPModalOpen, setIsMCPModalOpen] = useState(false);
@@ -30,6 +39,18 @@ export const App: React.FC = () => {
     scanLocalHardware();
   }, [addLocalModels]);
 
+  const handleLogout = () => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('leos-logged-in');
+    }
+    setIsLoggedIn(false);
+  };
+
+  // If first time opening (not logged in), display the Login Page
+  if (!isLoggedIn) {
+    return <LoginPage onLoginSuccess={() => setIsLoggedIn(true)} />;
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-leos-dark text-leos-text">
       {/* Sidebar Navigation */}
@@ -38,6 +59,7 @@ export const App: React.FC = () => {
         onOpenAccounts={() => setIsAccountModalOpen(true)}
         onOpenMCP={() => setIsMCPModalOpen(true)}
         onOpenSettings={() => setIsSettingsModalOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* Main Cockpit Area */}

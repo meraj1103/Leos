@@ -6,16 +6,19 @@ import {
   Puzzle, 
   Settings, 
   Users, 
-  Search
+  Search,
+  LogOut
 } from 'lucide-react';
 import { useChatStore } from '../stores/useChatStore';
 import { useAccountStore } from '../stores/useAccountStore';
+import { Logo } from './Logo';
 
 interface SidebarProps {
   isOpen: boolean;
   onOpenAccounts: () => void;
   onOpenMCP: () => void;
   onOpenSettings: () => void;
+  onLogout: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -23,6 +26,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenAccounts,
   onOpenMCP,
   onOpenSettings,
+  onLogout,
 }) => {
   const { 
     conversations, 
@@ -42,7 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Brand Header */}
       <div className="p-3.5 border-b border-leos-border flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <img src="/logo.svg" alt="Leos" className="w-7 h-7 rounded-lg" />
+          <Logo className="w-7 h-7" />
           <div className="flex flex-col">
             <span className="font-semibold text-sm tracking-wide text-leos-text">Leos</span>
             <span className="text-[10px] text-leos-muted font-mono tracking-tight">UNIVERSAL COCKPIT</span>
@@ -137,6 +141,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <Settings className="w-3.5 h-3.5" />
           <span>Settings</span>
+        </button>
+
+        {/* Sign Out / Switch Profile */}
+        <button
+          onClick={onLogout}
+          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs text-leos-muted hover:text-amber-400 hover:bg-leos-surfaceHover transition-colors"
+          title="Switch profile or sign out to login screen"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          <span>Switch Profile / Sign Out</span>
         </button>
 
         {/* Active Account Pill */}
