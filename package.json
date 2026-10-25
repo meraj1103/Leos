@@ -53,8 +53,8 @@
       "output": "release"
     },
     "files": [
-      "dist/**/*",
       "dist-electron/**/*",
+      "dist/**/*",
       "public/**/*"
     ],
     "win": {
