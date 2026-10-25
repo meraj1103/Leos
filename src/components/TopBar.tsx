@@ -159,11 +159,24 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* Current Active Account Indicator */}
         <button
           onClick={onOpenAccounts}
-          className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] text-leos-muted hover:text-leos-text hover:bg-leos-surfaceHover transition-colors border border-transparent hover:border-leos-border"
-          title="Active Google Account Session"
+          className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-leos-card/60 hover:bg-leos-surfaceHover border border-leos-border/60 hover:border-leos-border transition-all text-xs"
+          title="Active Account Session (Click to manage)"
         >
-          <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-          <span className="font-mono text-[10px] truncate max-w-[140px]">{activeAccount?.email}</span>
+          {activeAccount?.avatarUrl ? (
+            <div className="relative shrink-0">
+              <img
+                src={activeAccount.avatarUrl}
+                alt={activeAccount.name}
+                className="w-4 h-4 rounded-full object-cover"
+              />
+              <div className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-1 ring-leos-card"></div>
+            </div>
+          ) : (
+            <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></div>
+          )}
+          <span className="font-mono text-[11px] text-leos-text truncate max-w-[150px]">
+            {activeAccount?.email || 'Connected'}
+          </span>
         </button>
       </div>
 

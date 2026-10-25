@@ -144,7 +144,13 @@ export async function dispatchRealAI({
     }
 
     try {
-      const apiModel = modelId.includes('2.0') ? 'gemini-2.0-flash' : 'gemini-1.5-flash';
+      let apiModel = 'gemini-1.5-flash';
+      if (modelId.includes('2.0')) {
+        apiModel = 'gemini-2.0-flash';
+      } else if (modelId.includes('1.5-pro')) {
+        apiModel = 'gemini-1.5-pro';
+      }
+
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:streamGenerateContent?key=${geminiKey}&alt=sse`;
       
       const contents = [
@@ -189,6 +195,77 @@ export async function dispatchRealAI({
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       onChunk(`❌ **Gemini API Error:** ${err.message || 'Failed to complete request.'}`);
+      return;
+    }
+  }
+
+  // 4. ANTHROPIC CLAUDE
+  if (provider === 'anthropic') {
+    const anthropicKey = typeof localStorage !== 'undefined' ? localStorage.getItem('leos-anthropic-key') : '';
+    if (!anthropicKey) {
+      onChunk(
+        `🔑 **Anthropic Claude API Key Required**\n\n` +
+        `No API key is configured for **${modelName}**.\n\n` +
+        `**To connect:**\n` +
+        `1. Open **Settings** (⚙️ in the sidebar).\n` +
+        `2. Paste your Anthropic API Key (from [console.anthropic.com](https://console.anthropic.com)).\n` +
+        `3. Or, select a local model (Ollama / LM Studio) or Google Gemini for free AI.`
+      );
+      return;
+    }
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+          'dangerously-allow-browser': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-sonnet-20241022',
+          max_tokens: 4096,
+          messages: [
+            ...conversationHistory
+              .filter((m) => m.role === 'user' || m.role === 'assistant')
+              .map((m) => ({ role: m.role, content: m.content })),
+            { role: 'user', content: prompt },
+          ],
+          stream: true,
+        }),
+        signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `Anthropic API status ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No stream from Anthropic API');
+
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        const lines = text.split('\n').filter((l) => l.trim().startsWith('data:'));
+        for (const line of lines) {
+          const raw = line.replace('data:', '').trim();
+          if (raw === '[DONE]') break;
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+              onChunk(parsed.delta.text);
+            }
+          } catch {}
+        }
+      }
+      return;
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      onChunk(`❌ **Anthropic API Error:** ${err.message || 'Failed to complete request.'}`);
       return;
     }
   }

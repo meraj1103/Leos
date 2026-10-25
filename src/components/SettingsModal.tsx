@@ -10,10 +10,15 @@ import {
   Sun,
   Moon,
   Monitor,
-  Key
+  Key,
+  ExternalLink,
+  Loader2,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { useChatStore } from '../stores/useChatStore';
 import { useThemeStore, ThemeMode } from '../stores/useThemeStore';
+import { googleAuthService } from '../services/googleAuthService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -25,11 +30,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
   const [lmStudioUrl, setLmStudioUrl] = useState('http://localhost:1234');
   const [geminiKey, setGeminiKey] = useState('');
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [anthropicKey, setAnthropicKey] = useState('');
   const [openAIKey, setOpenAIKey] = useState('');
   const [groqKey, setGroqKey] = useState('');
   const [deepseekKey, setDeepseekKey] = useState('');
   const [exported, setExported] = useState(false);
   const [savedKeyMsg, setSavedKeyMsg] = useState(false);
+  const [isVerifyingGemini, setIsVerifyingGemini] = useState(false);
+  const [geminiStatus, setGeminiStatus] = useState<{ success?: boolean; message?: string } | null>(null);
 
   const { theme, setTheme } = useThemeStore();
 
@@ -37,10 +46,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     if (typeof localStorage !== 'undefined') {
       setOllamaUrl(localStorage.getItem('leos-ollama-url') || 'http://localhost:11434');
       setLmStudioUrl(localStorage.getItem('leos-lmstudio-url') || 'http://localhost:1234');
-      setGeminiKey(localStorage.getItem('leos-gemini-key') || '');
+      setGeminiKey(googleAuthService.getGeminiKey());
+      setGoogleClientId(googleAuthService.getClientId());
+      setAnthropicKey(localStorage.getItem('leos-anthropic-key') || '');
       setOpenAIKey(localStorage.getItem('leos-openai-key') || '');
       setGroqKey(localStorage.getItem('leos-groq-key') || '');
       setDeepseekKey(localStorage.getItem('leos-deepseek-key') || '');
+      setGeminiStatus(null);
     }
   }, [isOpen]);
 
@@ -50,13 +62,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('leos-ollama-url', ollamaUrl);
       localStorage.setItem('leos-lmstudio-url', lmStudioUrl);
-      localStorage.setItem('leos-gemini-key', geminiKey.trim());
+      googleAuthService.setGeminiKey(geminiKey);
+      googleAuthService.setClientId(googleClientId);
+      localStorage.setItem('leos-anthropic-key', anthropicKey.trim());
       localStorage.setItem('leos-openai-key', openAIKey.trim());
       localStorage.setItem('leos-groq-key', groqKey.trim());
       localStorage.setItem('leos-deepseek-key', deepseekKey.trim());
     }
     setSavedKeyMsg(true);
     setTimeout(() => setSavedKeyMsg(false), 2000);
+  };
+
+  const handleTestGeminiConnection = async () => {
+    if (!geminiKey.trim()) {
+      setGeminiStatus({ success: false, message: 'Please enter a Gemini API Key first.' });
+      return;
+    }
+    setIsVerifyingGemini(true);
+    setGeminiStatus(null);
+    const result = await googleAuthService.verifyGeminiApiKey(geminiKey.trim());
+    setIsVerifyingGemini(false);
+    if (result.success) {
+      setGeminiStatus({
+        success: true,
+        message: `Connected! Google API validated (${result.models?.length || 0} models ready)`,
+      });
+      googleAuthService.setGeminiKey(geminiKey);
+    } else {
+      setGeminiStatus({
+        success: false,
+        message: result.error || 'Connection failed.',
+      });
+    }
   };
 
   const handleExportJSON = () => {
@@ -141,19 +178,120 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               Keys are encrypted in local storage on your device and never sent to any intermediary server.
             </p>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {/* Google Services */}
+              <div className="p-3 rounded-xl bg-leos-card border border-leos-border space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold text-leos-text flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                    </svg>
+                    <span>Google Gemini & Identity Services</span>
+                  </label>
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] text-leos-accent hover:underline flex items-center gap-1"
+                  >
+                    Get Free Key <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[10px] text-leos-muted">Google Gemini API Key</span>
+                    <button
+                      type="button"
+                      onClick={handleTestGeminiConnection}
+                      disabled={isVerifyingGemini || !geminiKey.trim()}
+                      className="text-[10px] text-leos-accent hover:text-amber-400 font-medium flex items-center gap-1 disabled:opacity-40"
+                    >
+                      {isVerifyingGemini ? (
+                        <>
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" /> Verifying...
+                        </>
+                      ) : (
+                        'Test Live Connection'
+                      )}
+                    </button>
+                  </div>
+                  <input
+                    type="password"
+                    placeholder="AIzaSy... (from aistudio.google.com)"
+                    value={geminiKey}
+                    onChange={(e) => setGeminiKey(e.target.value)}
+                    onBlur={handleSaveKeys}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-leos-surface border border-leos-border text-xs text-leos-text outline-none font-mono placeholder:text-leos-muted/50"
+                  />
+                  {geminiStatus && (
+                    <div
+                      className={`mt-1.5 text-[10px] flex items-center gap-1.5 px-2 py-1 rounded-md ${
+                        geminiStatus.success
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                      }`}
+                    >
+                      {geminiStatus.success ? (
+                        <CheckCircle2 className="w-3 h-3 shrink-0" />
+                      ) : (
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                      )}
+                      <span>{geminiStatus.message}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[10px] text-leos-muted">Google OAuth 2.0 Client ID (for 1-click Google Sign-In)</span>
+                    <a
+                      href="https://console.cloud.google.com/apis/credentials"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-leos-muted hover:text-leos-text flex items-center gap-1"
+                    >
+                      Google Cloud Console <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="...apps.googleusercontent.com"
+                    value={googleClientId}
+                    onChange={(e) => setGoogleClientId(e.target.value)}
+                    onBlur={handleSaveKeys}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-leos-surface border border-leos-border text-xs text-leos-text outline-none font-mono placeholder:text-leos-muted/50"
+                  />
+                </div>
+              </div>
+
+              {/* Anthropic Claude */}
               <div>
-                <label className="text-[11px] text-leos-muted block mb-0.5">Google Gemini API Key (aistudio.google.com)</label>
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="text-[11px] text-leos-muted">Anthropic Claude API Key</label>
+                  <a
+                    href="https://console.anthropic.com/settings/keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] text-leos-muted hover:text-leos-text flex items-center gap-1"
+                  >
+                    console.anthropic.com <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </div>
                 <input
                   type="password"
-                  placeholder="AIzaSy..."
-                  value={geminiKey}
-                  onChange={(e) => setGeminiKey(e.target.value)}
+                  placeholder="sk-ant-..."
+                  value={anthropicKey}
+                  onChange={(e) => setAnthropicKey(e.target.value)}
                   onBlur={handleSaveKeys}
                   className="w-full px-2.5 py-1.5 rounded-lg bg-leos-card border border-leos-border text-xs text-leos-text outline-none font-mono placeholder:text-leos-muted/50"
                 />
               </div>
 
+              {/* OpenAI Key */}
               <div>
                 <label className="text-[11px] text-leos-muted block mb-0.5">OpenAI API Key (platform.openai.com)</label>
                 <input
@@ -193,10 +331,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
               <button
                 onClick={handleSaveKeys}
-                className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border text-xs font-medium text-leos-text transition-colors"
+                className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-leos-accent text-black hover:bg-amber-500 font-semibold text-xs transition-colors shadow-sm"
               >
-                <Check className="w-3.5 h-3.5 text-leos-accent" />
-                <span>Save API Keys</span>
+                <Check className="w-3.5 h-3.5" />
+                <span>Save All Credentials</span>
               </button>
             </div>
           </div>

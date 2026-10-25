@@ -5,7 +5,7 @@ interface AccountState {
   accounts: LeosAccount[];
   activeAccountId: string;
   setActiveAccount: (id: string) => void;
-  addAccount: (account: Omit<LeosAccount, 'id' | 'partition'>) => void;
+  addAccount: (account: Omit<LeosAccount, 'id' | 'partition'> & { id?: string; partition?: string }) => void;
   removeAccount: (id: string) => void;
   updateAccountStatus: (id: string, status: LeosAccount['tokenStatus']) => void;
 }
@@ -50,17 +50,51 @@ export const useAccountStore = create<AccountState>((set) => ({
       })),
     })),
   addAccount: (accountData) => {
-    const id = `acc-${Date.now()}`;
-    const newAccount: LeosAccount = {
-      ...accountData,
-      id,
-      partition: `persist:account_${id}`,
-      isActive: false,
-    };
+    const id = (accountData as any).id || `acc-${Date.now()}`;
+    const makeActive = accountData.isActive ?? true;
+    
     set((state) => {
-      const updated = [...state.accounts, newAccount];
-      if (typeof localStorage !== 'undefined') localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(updated));
-      return { accounts: updated };
+      // Check if account with same ID or email already exists
+      const existingIndex = state.accounts.findIndex(
+        (a) => a.id === id || (accountData.email && a.email.toLowerCase() === accountData.email.toLowerCase())
+      );
+
+      let updated: LeosAccount[];
+      if (existingIndex >= 0) {
+        updated = state.accounts.map((acc, idx) => {
+          if (idx === existingIndex) {
+            return {
+              ...acc,
+              ...accountData,
+              id: acc.id,
+              isActive: makeActive,
+            };
+          }
+          return makeActive ? { ...acc, isActive: false } : acc;
+        });
+      } else {
+        const newAccount: LeosAccount = {
+          ...accountData,
+          id,
+          partition: `persist:account_${id}`,
+          isActive: makeActive,
+        };
+        const previous = makeActive
+          ? state.accounts.map((a) => ({ ...a, isActive: false }))
+          : state.accounts;
+        updated = [...previous, newAccount];
+      }
+
+      const activeId = makeActive ? (existingIndex >= 0 ? state.accounts[existingIndex].id : id) : state.activeAccountId;
+
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(updated));
+      }
+
+      return {
+        accounts: updated,
+        activeAccountId: activeId,
+      };
     });
   },
   removeAccount: (id) =>

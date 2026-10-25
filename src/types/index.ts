@@ -25,6 +25,20 @@ export interface LeosAccount {
   isActive: boolean;
   connectedModels: string[]; // Model IDs available to this account
   tokenStatus: 'healthy' | 'warning' | 'limited';
+  googleId?: string;
+  googleAccessToken?: string;
+  googleIdToken?: string;
+  authProvider?: 'google' | 'local';
+}
+
+export interface GoogleUserProfile {
+  sub: string;
+  email: string;
+  name: string;
+  picture?: string;
+  email_verified?: boolean;
+  given_name?: string;
+  family_name?: string;
 }
 
 export interface LeosModel {

@@ -37,6 +37,25 @@ function createWindow() {
     }
   });
 
+  // Handle popup windows (e.g., Google OAuth Sign-In popups)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        width: 520,
+        height: 680,
+        title: 'Sign in with Google - Leos Cockpit',
+        autoHideMenuBar: true,
+        backgroundColor: '#ffffff',
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+          partition: 'persist:google_account',
+        },
+      },
+    };
+  });
+
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error('Leos failed to load:', errorCode, errorDescription, validatedURL);
   });
@@ -53,14 +72,40 @@ function createWindow() {
   });
 }
 
+const CHROME_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+// Ensure all web contents use a genuine Chrome user-agent so Google login doesn't block with "disallowed_useragent"
+app.on('web-contents-created', (_event, contents) => {
+  contents.setUserAgent(CHROME_USER_AGENT);
+});
+
 // Multi-partition session configurator
 ipcMain.handle('leos:get-partition-session', async (_event, partitionId: string) => {
   const customSession = session.fromPartition(partitionId);
-  // Set clean modern browser user-agent to ensure Google SSO and web models operate normally
-  customSession.setUserAgent(
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
-  );
+  customSession.setUserAgent(CHROME_USER_AGENT);
   return { partitionId, initialized: true };
+});
+
+// Real Google Sign-In Window Opener
+ipcMain.handle('leos:open-google-login', async (_event, customUrl?: string) => {
+  const authUrl = customUrl || 'https://accounts.google.com/signin';
+  const authWindow = new BrowserWindow({
+    width: 520,
+    height: 680,
+    title: 'Sign in with Google - Leos Cockpit',
+    autoHideMenuBar: true,
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      partition: 'persist:google_account',
+    },
+  });
+
+  authWindow.webContents.setUserAgent(CHROME_USER_AGENT);
+  await authWindow.loadURL(authUrl);
+  return { success: true, url: authUrl };
 });
 
 app.whenReady().then(createWindow);

@@ -159,9 +159,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className="mt-1.5 p-2 rounded-lg bg-leos-card hover:bg-leos-surfaceHover border border-leos-border cursor-pointer transition-all flex items-center justify-between"
         >
           <div className="flex items-center gap-2 truncate">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-leos-accent to-amber-600 flex items-center justify-center text-[10px] font-semibold text-black shrink-0">
-              {activeAccount?.name ? activeAccount.name.charAt(0) : 'U'}
-            </div>
+            {activeAccount?.avatarUrl ? (
+              <img
+                src={activeAccount.avatarUrl}
+                alt={activeAccount.name}
+                className="w-6 h-6 rounded-full object-cover border border-leos-border shrink-0"
+              />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-leos-accent to-amber-600 flex items-center justify-center text-[10px] font-semibold text-black shrink-0">
+                {activeAccount?.name ? activeAccount.name.charAt(0) : 'U'}
+              </div>
+            )}
             <div className="flex flex-col truncate">
               <span className="text-xs font-medium text-leos-text truncate leading-tight">
                 {activeAccount?.name || 'Account'}
