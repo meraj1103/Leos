@@ -12,7 +12,7 @@ function createWindow() {
     backgroundColor: '#0e0f12',
     title: 'Leos - Universal AI Cockpit',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       webviewTag: true, // Enables isolated multi-account <webview> partitions
