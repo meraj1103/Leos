@@ -5,7 +5,9 @@
   "description": "The Universal, Privacy-First AI Cockpit",
   "main": "dist-electron/main.cjs",
   "scripts": {
+    "start": "vite",
     "dev": "vite",
+    "share": "vite --host",
     "build": "tsc && vite build",
     "build:electron": "esbuild electron/main.ts --bundle --platform=node --external:electron --outfile=dist-electron/main.cjs && esbuild electron/preload.ts --bundle --platform=node --external:electron --outfile=dist-electron/preload.cjs",
     "build:win": "npm run build && npm run build:electron && electron-builder --win nsis",

@@ -15,6 +15,7 @@ import { useModelStore } from '../stores/useModelStore';
 import { useAccountStore } from '../stores/useAccountStore';
 import { useThemeStore } from '../stores/useThemeStore';
 import { LeosModel } from '../types';
+import { InstallButton } from './InstallButton';
 
 interface TopBarProps {
   onToggleSidebar: () => void;
@@ -168,6 +169,9 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right: Actions (Voice Talk Mode, Split View, Privacy Badge) */}
       <div className="flex items-center gap-1.5">
+        {/* 1-Tap PWA Install Button (shows when installable on Android / Laptop browser) */}
+        <InstallButton />
+
         {/* Theme Toggle (Light / Dark) */}
         <button
           onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}

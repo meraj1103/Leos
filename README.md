@@ -69,21 +69,23 @@ Instead of paying for expensive API tokens or juggling multiple browser windows,
 
 ## Installation & Downloads
 
-### 💻 Desktop (Windows 10 / 11)
-**One-Click Installer:**
-1. Go to the [Releases](https://github.com/meraj1103/Leos/releases) page.
-2. Download **`Leos-Setup-1.0.0.exe`**.
-3. Double-click to run. Leos will install automatically and create a desktop shortcut with zero setup.
+### 💻 Laptop / Desktop (Windows 10 / 11)
+**Option 1: Pre-Built Standalone App (Zero Setup)**
+1. Run `release\win-unpacked\Leos.exe` directly or download `Leos-Setup-1.0.0.exe` from [Releases](https://github.com/meraj1103/Leos/releases).
+2. It launches instantly with zero setup or configuration required.
+
+**Option 2: 1-Click Windows Launcher (`start-laptop.bat`)**
+* Simply double-click [`start-laptop.bat`](./start-laptop.bat) in the project folder. It automatically detects your environment, installs dependencies if needed, and launches Leos in one click!
 
 ---
 
 ### 📱 Android (Phones & Tablets)
-You have two ways to install Leos on Android:
 
-#### Option 1: 1-Tap Install (PWA — Recommended, Instant)
-1. Open your deployed Leos URL in Chrome on your Android device.
-2. Tap the **"Add Leos to Home screen"** or **"Install App"** banner at the bottom.
-3. The app will install into your Android app drawer and launch full-screen like a native app.
+#### Option 1: 1-Tap Home Screen App (PWA — Recommended, Instant)
+1. Double-click [`share-to-mobile.bat`](./share-to-mobile.bat) on your laptop (or run `npm run share`).
+2. On your Android device (connected to the same Wi-Fi), open Chrome and enter the displayed local IP URL (e.g. `http://192.168.1.X:5173`).
+3. Tap the glowing **"Install App"** button at the top (or tap Chrome Menu `⋮` ➔ **"Add to Home screen" / "Install Leos"**).
+4. Leos is now installed in your Android app drawer with full offline caching and standalone full-screen window support!
 
 #### Option 2: Standalone APK
 1. Download **`Leos.apk`** from [Releases](https://github.com/meraj1103/Leos/releases).
@@ -102,7 +104,10 @@ cd Leos
 npm install
 
 # Run the local web dev server
-npm run dev
+npm start
+
+# Share on your local network (for mobile/tablet access)
+npm run share
 
 # Build the Windows one-click installer (.exe)
 npm run build:win
